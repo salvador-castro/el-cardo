@@ -32,7 +32,10 @@ export function AccionesActividad({
   nombre,
   estado,
   impagos,
+  rutaEditar,
 }: {
+  // Por defecto, la edición de actividades.
+  rutaEditar?: string
   id: string
   nombre: string
   estado: EstadoActividad
@@ -69,7 +72,7 @@ export function AccionesActividad({
           </Button>
         )}
         <Button variant="outline" size="lg" asChild>
-          <Link href={`/actividades/${id}/editar`}>
+          <Link href={rutaEditar ?? `/actividades/${id}/editar`}>
             <PencilIcon /> Editar
           </Link>
         </Button>

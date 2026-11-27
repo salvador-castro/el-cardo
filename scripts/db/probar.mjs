@@ -184,6 +184,41 @@ const cat = (await q(`select id from torneo_categorias where nombre='Desarrollo'
 const ttc = (await q(`select generar_todos_contra_todos('${cat}') n`))[0].n
 check(`Todos contra todos no duplica cruces existentes (creó ${ttc})`, ttc === 0)
 
+// ---- Etapa 4: torneos ----
+const eqId = async (nombre) => (await q(`select id from equipos where nombre=$1 and categoria_id is not null`, [nombre]))[0].id
+const copa = (await q(`select id, actividad_id from torneo_categorias where nombre='Copa'`))[0]
+const finalCopa = (await q(`select id, equipo_a_id, equipo_b_id from partidos where categoria_id='${copa.id}' and fase='final'`))[0]
+check('La final toma al 1.º de cada zona (zonas terminadas)',
+  finalCopa.equipo_a_id === await eqId('Los Cardos') && finalCopa.equipo_b_id === await eqId('La Herradura'))
+const ptsCardos = (await q(`select pts, posicion from posiciones where equipo_id='${await eqId('Los Cardos')}'`))[0]
+check(`Posiciones por puntos (Los Cardos: ${ptsCardos.pts} pts, ${ptsCardos.posicion}.º)`, ptsCardos.pts === 3 && ptsCardos.posicion === 1)
+const zonaA = (await q(`select p.id from partidos p join torneo_zonas z on z.id=p.zona_id where z.nombre='Zona A' and p.fase='grupos'`))[0].id
+await db.exec(`update partidos set goles_a = 5, goles_b = 7 where id='${zonaA}'`)
+check('Si cambia el resultado de la zona, cambia quién pasa a la final',
+  (await q(`select equipo_a_id from partidos where id='${finalCopa.id}'`))[0].equipo_a_id === await eqId('El Trébol'))
+await db.exec(`update partidos set goles_a = 7, goles_b = 5 where id='${zonaA}'`)
+const tercero = (await q(`insert into partidos (actividad_id, categoria_id, fase, desde_a_partido, desde_a_resultado, desde_b_partido, desde_b_resultado)
+  values ('${copa.actividad_id}', '${copa.id}', 'otro', '${finalCopa.id}', 'ganador', '${finalCopa.id}', 'perdedor') returning id, equipo_a_id`))[0]
+check('Partido que espera al ganador queda sin equipo hasta que se juegue', tercero.equipo_a_id === null)
+await expectError('En la llave no hay empate', `update partidos set goles_a = 2, goles_b = 2, estado='jugado' where id='${finalCopa.id}'`, 'empate')
+await q(`select guardar_resultado('${finalCopa.id}', 3::smallint, 6::smallint, null, $1::jsonb)`,
+  [JSON.stringify([{ jugador_id: J(13), cantidad: 4 }, { jugador_id: J(1), cantidad: 2 }])])
+const t3 = (await q(`select equipo_a_id, equipo_b_id from partidos where id='${tercero.id}'`))[0]
+check('Al cargar el resultado, el ganador y el perdedor avanzan solos',
+  t3.equipo_a_id === await eqId('La Herradura') && t3.equipo_b_id === await eqId('Los Cardos'))
+check('guardar_resultado guarda los goleadores', Number((await q(`select sum(cantidad) s from goleadores where partido_id='${finalCopa.id}'`))[0].s) === 6)
+await expectError('Goleador que no juega en el partido', `select guardar_resultado('${finalCopa.id}', 3::smallint, 6::smallint, null,
+  '[{"jugador_id":"${J(2)}","cantidad":1}]'::jsonb)`, 'goleador')
+await expectError('Equipo de otra categoría en el partido', `insert into partidos (actividad_id, categoria_id, fase, equipo_a_id, equipo_b_id)
+  values ('${copa.actividad_id}', '${copa.id}', 'otro', '${await eqId('Los Cardos')}', '${await eqId('Potrillos')}')`, 'categoría')
+
+// ---- Rotación a la americana (prácticas) ----
+const ptPractica = (await q(`select id from partidos where categoria_id is null limit 1`))[0].id
+const nDesc = (await q(`select guardar_descansos('${ptPractica}', $1::jsonb) n`, [JSON.stringify([{ jugador_id: J(3), chukker: 2 }])]))[0].n
+check('Se guarda quién descansa en cada chukker', nDesc === 1)
+await expectError('Descanso de alguien que no juega el partido', `select guardar_descansos('${ptPractica}', '[{"jugador_id":"${J(20)}","chukker":1}]'::jsonb)`, 'no juega')
+await expectError('Descanso en un chukker que no existe', `select guardar_descansos('${ptPractica}', '[{"jugador_id":"${J(3)}","chukker":6}]'::jsonb)`, 'chukkers')
+
 // ---- RLS ----
 const admin = '00000000-0000-4000-a000-00000000a001'
 await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${admin}', false);`)

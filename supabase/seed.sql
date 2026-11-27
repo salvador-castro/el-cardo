@@ -244,8 +244,8 @@ begin
   )
   returning id into v_torneo;
 
-  insert into public.torneo_categorias (actividad_id, nombre, tope_handicap, orden)
-    values (v_torneo, 'Copa', 8, 1) returning id into v_cat_copa;
+  insert into public.torneo_categorias (actividad_id, nombre, tope_handicap, orden, formato)
+    values (v_torneo, 'Copa', 8, 1, 'zonas_llave') returning id into v_cat_copa;
   insert into public.torneo_categorias (actividad_id, nombre, tope_handicap, orden)
     values (v_torneo, 'Desarrollo', 2, 2) returning id into v_cat_des;
 
@@ -299,10 +299,11 @@ begin
     (v_partido, '00000000-0000-4000-a000-000000000019', 2),
     (v_partido, '00000000-0000-4000-a000-000000000008', 3);
 
-  -- Copa — Final (con placeholders)
-  insert into public.partidos (actividad_id, categoria_id, fase, inicio, cancha, placeholder_a, placeholder_b, orden)
+  -- Copa — Final: 1.º de la Zona A vs 1.º de la Zona B (se completa sola al terminar cada zona)
+  insert into public.partidos (actividad_id, categoria_id, fase, inicio, cancha, desde_a_zona, desde_a_puesto,
+                               desde_b_zona, desde_b_puesto, orden)
   values (v_torneo, v_cat_copa, 'final', ((hoy + 4) + time '17:00') at time zone tz, 'Cancha 1',
-          'Ganador Zona A', 'Ganador Zona B', 10);
+          v_zona_a, 1, v_zona_b, 1, 10);
 
   -- Desarrollo — todos contra todos (2 jugados, 1 pendiente)
   insert into public.partidos (actividad_id, categoria_id, fase, inicio, cancha, equipo_a_id, equipo_b_id,

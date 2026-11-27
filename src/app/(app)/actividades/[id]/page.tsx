@@ -36,13 +36,13 @@ export default async function DetalleActividadPage({ params, searchParams }: Pag
   if (!UUID.test(id)) notFound()
 
   const supabase = await createClient()
-  const [actividadRes, equiposRes, participacionesRes, cobrosRes, jugadoresRes, partidosRes] = await Promise.all([
+  const [actividadRes, equiposRes, participacionesRes, cobrosRes, jugadoresRes, partidosRes, descansosRes] = await Promise.all([
     supabase
       .from("actividades")
       .select("id, tipo, nombre, inicio, estado, precio, notas, profesor:jugadores!actividades_profesor_id_fkey(id, nombre, apellido, handicap)")
       .eq("id", id)
       .maybeSingle(),
-    supabase.from("equipos").select("id, nombre, color").eq("actividad_id", id).order("created_at"),
+    supabase.from("equipos").select("id, nombre, color, categoria_id, zona_id").eq("actividad_id", id).order("created_at"),
     supabase.from("participaciones").select("id, jugador_id, equipo_id, asistencia, bonificado, precio").eq("actividad_id", id),
     supabase
       .from("cobros")
@@ -53,11 +53,15 @@ export default async function DetalleActividadPage({ params, searchParams }: Pag
     supabase.from("jugadores_resumen").select("id, nombre, apellido, handicap, tipo, club_origen, apto_estado, activo"),
     supabase
       .from("partidos")
-      .select("id, equipo_a_id, equipo_b_id, color_a, color_b, inicio, cancha, goles_a, goles_b, estado")
+      .select("id, equipo_a_id, equipo_b_id, color_a, color_b, inicio, cancha, goles_a, goles_b, estado, chukkers")
       .eq("actividad_id", id)
       .order("inicio", { ascending: true, nullsFirst: false })
       .order("orden")
       .order("created_at"),
+    supabase
+      .from("partido_descansos")
+      .select("partido_id, jugador_id, chukker, partido:partidos!inner(actividad_id)")
+      .eq("partido.actividad_id", id),
   ])
 
   const error =
@@ -233,7 +237,17 @@ export default async function DetalleActividadPage({ params, searchParams }: Pag
         }
         partidos={
           esClase ? undefined : (
-            <TabPartidos actividad={actividad} equipos={equipos} participantes={participantes} partidos={partidos} />
+            <TabPartidos
+              actividad={actividad}
+              equipos={equipos}
+              participantes={participantes}
+              partidos={partidos}
+              descansos={(descansosRes.data ?? []).map((d) => ({
+                partido_id: d.partido_id,
+                jugador_id: d.jugador_id,
+                chukker: d.chukker,
+              }))}
+            />
           )
         }
         asistencia={<TabAsistencia actividad={actividad} equipos={equipos} participantes={participantes} />}

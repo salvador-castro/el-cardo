@@ -899,14 +899,63 @@ export type Database = {
           },
         ]
       }
+      partido_descansos: {
+        Row: {
+          chukker: number
+          jugador_id: string
+          partido_id: string
+        }
+        Insert: {
+          chukker: number
+          jugador_id: string
+          partido_id: string
+        }
+        Update: {
+          chukker?: number
+          jugador_id?: string
+          partido_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partido_descansos_jugador_id_fkey"
+            columns: ["jugador_id"]
+            isOneToOne: false
+            referencedRelation: "jugadores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partido_descansos_jugador_id_fkey"
+            columns: ["jugador_id"]
+            isOneToOne: false
+            referencedRelation: "jugadores_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partido_descansos_partido_id_fkey"
+            columns: ["partido_id"]
+            isOneToOne: false
+            referencedRelation: "partidos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partidos: {
         Row: {
           actividad_id: string
           cancha: string | null
           categoria_id: string | null
+          chukkers: number
           color_a: string | null
           color_b: string | null
           created_at: string
+          desde_a_partido: string | null
+          desde_a_puesto: number | null
+          desde_a_resultado: string | null
+          desde_a_zona: string | null
+          desde_b_partido: string | null
+          desde_b_puesto: number | null
+          desde_b_resultado: string | null
+          desde_b_zona: string | null
           equipo_a_id: string | null
           equipo_b_id: string | null
           estado: Database["public"]["Enums"]["estado_partido"]
@@ -928,9 +977,18 @@ export type Database = {
           actividad_id: string
           cancha?: string | null
           categoria_id?: string | null
+          chukkers?: number
           color_a?: string | null
           color_b?: string | null
           created_at?: string
+          desde_a_partido?: string | null
+          desde_a_puesto?: number | null
+          desde_a_resultado?: string | null
+          desde_a_zona?: string | null
+          desde_b_partido?: string | null
+          desde_b_puesto?: number | null
+          desde_b_resultado?: string | null
+          desde_b_zona?: string | null
           equipo_a_id?: string | null
           equipo_b_id?: string | null
           estado?: Database["public"]["Enums"]["estado_partido"]
@@ -952,9 +1010,18 @@ export type Database = {
           actividad_id?: string
           cancha?: string | null
           categoria_id?: string | null
+          chukkers?: number
           color_a?: string | null
           color_b?: string | null
           created_at?: string
+          desde_a_partido?: string | null
+          desde_a_puesto?: number | null
+          desde_a_resultado?: string | null
+          desde_a_zona?: string | null
+          desde_b_partido?: string | null
+          desde_b_puesto?: number | null
+          desde_b_resultado?: string | null
+          desde_b_zona?: string | null
           equipo_a_id?: string | null
           equipo_b_id?: string | null
           estado?: Database["public"]["Enums"]["estado_partido"]
@@ -993,6 +1060,34 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "torneo_categorias"
             referencedColumns: ["id", "actividad_id"]
+          },
+          {
+            foreignKeyName: "partidos_desde_a_partido_fkey"
+            columns: ["desde_a_partido"]
+            isOneToOne: false
+            referencedRelation: "partidos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partidos_desde_a_zona_fkey"
+            columns: ["desde_a_zona"]
+            isOneToOne: false
+            referencedRelation: "torneo_zonas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partidos_desde_b_partido_fkey"
+            columns: ["desde_b_partido"]
+            isOneToOne: false
+            referencedRelation: "partidos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partidos_desde_b_zona_fkey"
+            columns: ["desde_b_zona"]
+            isOneToOne: false
+            referencedRelation: "torneo_zonas"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "partidos_equipo_a_id_actividad_id_fkey"
@@ -1077,25 +1172,37 @@ export type Database = {
         Row: {
           actividad_id: string
           created_at: string
+          formato: string
           id: string
           nombre: string
           orden: number
+          puntos_derrota: number
+          puntos_empate: number
+          puntos_victoria: number
           tope_handicap: number | null
         }
         Insert: {
           actividad_id: string
           created_at?: string
+          formato?: string
           id?: string
           nombre: string
           orden?: number
+          puntos_derrota?: number
+          puntos_empate?: number
+          puntos_victoria?: number
           tope_handicap?: number | null
         }
         Update: {
           actividad_id?: string
           created_at?: string
+          formato?: string
           id?: string
           nombre?: string
           orden?: number
+          puntos_derrota?: number
+          puntos_empate?: number
+          puntos_victoria?: number
           tope_handicap?: number | null
         }
         Relationships: [
@@ -1368,6 +1475,7 @@ export type Database = {
           pj: number | null
           posicion: number | null
           pp: number | null
+          pts: number | null
           zona_id: string | null
         }
         Relationships: [
@@ -1468,10 +1576,23 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      equipo_desde_origen: {
+        Args: {
+          p_partido: string
+          p_puesto: number
+          p_resultado: string
+          p_zona: string
+        }
+        Returns: string
+      }
       es_admin: { Args: never; Returns: boolean }
       generar_cuotas_sociales: { Args: { p_periodo?: string }; Returns: number }
       generar_todos_contra_todos: {
         Args: { p_categoria_id: string; p_zona_id?: string }
+        Returns: number
+      }
+      guardar_descansos: {
+        Args: { p_descansos: Json; p_partido_id: string }
         Returns: number
       }
       guardar_equipo: {
@@ -1482,6 +1603,16 @@ export type Database = {
           p_nombre: string
         }
         Returns: string
+      }
+      guardar_resultado: {
+        Args: {
+          p_goleadores?: Json
+          p_goles_a: number
+          p_goles_b: number
+          p_goles_chukkers?: Json
+          p_partido_id: string
+        }
+        Returns: undefined
       }
       hoy_ar: { Args: never; Returns: string }
       monto_cuota_social: { Args: { p_periodo: string }; Returns: number }
@@ -1499,6 +1630,7 @@ export type Database = {
         }
         Returns: string
       }
+      zona_terminada: { Args: { p_zona_id: string }; Returns: boolean }
     }
     Enums: {
       asistencia: "presente" | "ausente"

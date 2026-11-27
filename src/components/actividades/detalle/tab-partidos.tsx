@@ -1,6 +1,6 @@
 "use client"
 
-import { EllipsisVerticalIcon, Loader2Icon, PencilIcon, PlusIcon, SwordsIcon, Trash2Icon, TrophyIcon } from "lucide-react"
+import { EllipsisVerticalIcon, Loader2Icon, PencilIcon, PlusIcon, RepeatIcon, SwordsIcon, Trash2Icon, TrophyIcon } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
@@ -46,6 +46,7 @@ import { esquemaPartido, fechaHoraAR, type DatosPartido } from "@/lib/actividade
 import { formatearHandicap, formatearHora } from "@/lib/formato"
 import { cn } from "@/lib/utils"
 import { Camiseta } from "../camiseta"
+import { ContenidoRotacion, EN_CANCHA } from "./rotacion"
 
 type Borrador = {
   equipo_a_id: string
@@ -54,6 +55,7 @@ type Borrador = {
   cancha: string
   goles_a: string
   goles_b: string
+  chukkers: number
 }
 
 export function TabPartidos({
@@ -61,13 +63,21 @@ export function TabPartidos({
   equipos,
   participantes,
   partidos,
+  descansos,
 }: {
   actividad: ActividadDetalle
   equipos: EquipoDetalle[]
   participantes: ParticipanteDetalle[]
   partidos: PartidoDetalle[]
+  descansos: { partido_id: string; jugador_id: string; chukker: number }[]
 }) {
   const [editando, setEditando] = useState<{ id: string | null; borrador: Borrador } | null>(null)
+  const [rotacion, setRotacion] = useState<PartidoDetalle | null>(null)
+  const jugadoresDe = (equipoId: string | null) =>
+    participantes
+      .filter((p) => p.equipo_id === equipoId)
+      .map((p) => p.jugador)
+      .sort((a, b) => a.apellido.localeCompare(b.apellido, "es"))
   const editable = actividad.estado !== "cancelada"
   const nombreEquipo = new Map(equipos.map((e) => [e.id, e.nombre]))
   const colorEquipo = new Map(equipos.map((e) => [e.id, e.color]))
@@ -78,7 +88,7 @@ export function TabPartidos({
   const nuevo = () =>
     setEditando({
       id: null,
-      borrador: { equipo_a_id: "", equipo_b_id: "", hora: "", cancha: "", goles_a: "", goles_b: "" },
+      borrador: { equipo_a_id: "", equipo_b_id: "", hora: "", cancha: "", goles_a: "", goles_b: "", chukkers: 4 },
     })
 
   const editar = (p: PartidoDetalle) =>
@@ -91,6 +101,7 @@ export function TabPartidos({
         cancha: p.cancha ?? "",
         goles_a: p.goles_a?.toString() ?? "",
         goles_b: p.goles_b?.toString() ?? "",
+        chukkers: p.chukkers,
       },
     })
 
@@ -128,11 +139,38 @@ export function TabPartidos({
                 hcpEquipo={hcpEquipo}
                 editable={editable}
                 onEditar={() => editar(p)}
+                rotacion={
+                  p.equipo_a_id && p.equipo_b_id
+                    ? {
+                        descansos: descansos.filter((d) => d.partido_id === p.id).length,
+                        // Con más de 4 en algún equipo hay que definir quién queda de baja.
+                        necesaria: Math.max(jugadoresDe(p.equipo_a_id).length, jugadoresDe(p.equipo_b_id).length) > EN_CANCHA,
+                        onAbrir: () => setRotacion(p),
+                      }
+                    : null
+                }
               />
             ))}
           </ol>
         </>
       )}
+
+      <Dialog open={rotacion !== null} onOpenChange={(v) => !v && setRotacion(null)}>
+        <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-4xl">
+          {rotacion && (
+            <ContenidoRotacion
+              key={rotacion.id}
+              partidoId={rotacion.id}
+              chukkers={rotacion.chukkers}
+              equipos={[rotacion.equipo_a_id, rotacion.equipo_b_id]
+                .filter((id): id is string => !!id)
+                .map((id) => ({ nombre: nombreEquipo.get(id) ?? "Equipo", color: colorEquipo.get(id) ?? null, jugadores: jugadoresDe(id) }))}
+              inicial={descansos.filter((d) => d.partido_id === rotacion.id)}
+              onCerrar={() => setRotacion(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editando !== null} onOpenChange={(v) => !v && setEditando(null)}>
         <DialogContent className="sm:max-w-lg">
@@ -203,7 +241,10 @@ function TarjetaPartido({
   hcpEquipo,
   editable,
   onEditar,
+  rotacion,
 }: {
+  // Si algún equipo tiene más de 4 jugadores: descansos cargados y cómo abrir la rotación.
+  rotacion: { descansos: number; necesaria: boolean; onAbrir: () => void } | null
   numero: number
   p: PartidoDetalle
   nombreEquipo: Map<string, string>
@@ -295,11 +336,23 @@ function TarjetaPartido({
         {lado(p.equipo_a_id, p.color_a, p.goles_a, ganaA)}
         {lado(p.equipo_b_id, p.color_b, p.goles_b, ganaB)}
       </div>
-      {editable && !jugado && (
-        <div className="border-t px-3 py-2">
-          <Button variant="ghost" size="sm" onClick={onEditar} className="text-dorado-oscuro">
-            Cargar resultado
-          </Button>
+      {(editable || rotacion) && (!jugado || rotacion) && (
+        <div className="flex flex-wrap items-center gap-1 border-t px-2 py-1.5">
+          {editable && !jugado && (
+            <Button variant="ghost" size="sm" onClick={onEditar} className="text-dorado-oscuro">
+              Cargar resultado
+            </Button>
+          )}
+          {rotacion && (
+            <Button variant="ghost" size="sm" onClick={rotacion.onAbrir} className="ml-auto">
+              <RepeatIcon /> Rotación · {p.chukkers} chukkers
+              {rotacion.necesaria && (
+                <span className={cn("text-xs", rotacion.descansos ? "text-muted-foreground" : "text-alerta")}>
+                  {rotacion.descansos ? "· cargada" : "· falta cargar"}
+                </span>
+              )}
+            </Button>
+          )}
         </div>
       )}
 
@@ -371,6 +424,7 @@ function ModalPartido({
       color_b: porId.get(b.equipo_b_id)?.color ?? null,
       hora: b.hora,
       cancha: b.cancha,
+      chukkers: b.chukkers,
       goles_a: aNumero(b.goles_a),
       goles_b: aNumero(b.goles_b),
     })
@@ -467,7 +521,7 @@ function ModalPartido({
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-3 border-t pt-3">
+        <div className="grid grid-cols-[1fr_1fr_5.5rem] gap-3 border-t pt-3">
           <Field>
             <FieldLabel htmlFor="pt-hora">Hora</FieldLabel>
             <Input id="pt-hora" type="time" step={300} value={b.hora} onChange={(e) => cambiar({ hora: e.target.value })} />
@@ -481,6 +535,21 @@ function ModalPartido({
               maxLength={60}
               onChange={(e) => cambiar({ cancha: e.target.value })}
             />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="pt-chukkers">Chukkers</FieldLabel>
+            <Select value={String(b.chukkers)} onValueChange={(v) => cambiar({ chukkers: Number(v) })}>
+              <SelectTrigger id="pt-chukkers" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
         </div>
       </div>

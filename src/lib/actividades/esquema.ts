@@ -67,6 +67,7 @@ export const esquemaPartido = z
     cancha: z.string().trim().max(60),
     goles_a: goles,
     goles_b: goles,
+    chukkers: z.number().int().min(1).max(8),
   })
   .refine((d) => d.equipo_a_id !== d.equipo_b_id, { message: "Elegí dos equipos distintos.", path: ["equipo_b_id"] })
   .refine((d) => (d.goles_a === null) === (d.goles_b === null), {

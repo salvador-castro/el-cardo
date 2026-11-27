@@ -19,14 +19,25 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import type { JugadorOpcion } from "@/lib/actividades/constantes"
-import { aptoConAviso, sumaHandicap, type ParticipanteDetalle } from "@/lib/actividades/detalle"
+import { aptoConAviso, sumaHandicap, type CategoriaDetalle, type ParticipanteDetalle } from "@/lib/actividades/detalle"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { formatearFecha, formatearHandicap, nombreCompleto } from "@/lib/formato"
 import { cn } from "@/lib/utils"
 import { COLOR_CAMISETA, COLORES_CAMISETA, type ColorCamiseta } from "@/lib/actividades/colores"
 import { SelectorCamiseta } from "../camiseta"
 import { SelectorJugadores } from "./selector-jugadores"
 
-export type EquipoEnEdicion = { id: string | null; nombre: string; jugadores: string[]; color: ColorCamiseta | null }
+export type EquipoEnEdicion = {
+  id: string | null
+  nombre: string
+  jugadores: string[]
+  color: ColorCamiseta | null
+  // Solo torneos.
+  categoria_id?: string | null
+  zona_id?: string | null
+}
+
+const SIN_ZONA = "__sin_zona__"
 
 export function ModalEquipo({
   actividadId,
@@ -35,8 +46,11 @@ export function ModalEquipo({
   jugadores,
   participantes,
   profesorId,
+  categorias,
 }: {
   actividadId: string
+  // Torneos: el equipo se asigna a una categoría (y opcionalmente a una zona).
+  categorias?: CategoriaDetalle[]
   // null: cerrado.
   equipo: EquipoEnEdicion | null
   onCerrar: () => void
@@ -57,6 +71,7 @@ export function ModalEquipo({
             jugadores={jugadores}
             participantes={participantes}
             profesorId={profesorId}
+            categorias={categorias}
           />
         )}
       </DialogContent>
@@ -71,8 +86,10 @@ function ContenidoEquipo({
   jugadores,
   participantes,
   profesorId,
+  categorias,
 }: {
   actividadId: string
+  categorias?: CategoriaDetalle[]
   equipo: EquipoEnEdicion
   onCerrar: () => void
   jugadores: JugadorOpcion[]
@@ -83,6 +100,9 @@ function ContenidoEquipo({
   const [pendiente, startTransition] = useTransition()
   const [nombre, setNombre] = useState(equipo.nombre)
   const [color, setColor] = useState<ColorCamiseta | null>(equipo.color)
+  const [categoriaId, setCategoriaId] = useState(equipo.categoria_id ?? categorias?.[0]?.id ?? "")
+  const [zonaId, setZonaId] = useState(equipo.zona_id ?? "")
+  const categoria = categorias?.find((c) => c.id === categoriaId)
 
   // Si el nombre es vacío o el de un color, al elegir la camiseta se usa ese color como nombre.
   const elegirColor = (c: ColorCamiseta) => {
@@ -111,6 +131,7 @@ function ContenidoEquipo({
   const integrantes = seleccion.map((id) => porId.get(id)).filter((j): j is JugadorOpcion => !!j)
   const total = sumaHandicap(integrantes)
   const sinApto = integrantes.filter(aptoConAviso)
+  const excedeTope = categoria?.tope_handicap != null && total > categoria.tope_handicap
 
   // Dónde está hoy cada jugador dentro de esta actividad.
   const notas = useMemo(
@@ -158,8 +179,18 @@ function ContenidoEquipo({
       toast.error("Ingresá el nombre del equipo.")
       return
     }
+    if (categorias && !categoriaId) {
+      toast.error("Elegí la categoría del equipo.")
+      return
+    }
     startTransition(async () => {
-      const r = await guardarEquipo(actividadId, { equipoId: equipo.id, nombre, jugadores: seleccion, color })
+      const r = await guardarEquipo(actividadId, {
+        equipoId: equipo.id,
+        nombre,
+        jugadores: seleccion,
+        color,
+        ...(categorias && { categoriaId, zonaId: zonaId || null }),
+      })
       if (!r.ok) {
         toast.error(r.error)
         return
@@ -202,11 +233,68 @@ function ContenidoEquipo({
           <p className="text-sm font-medium">
             Camiseta
             <span className="font-normal text-muted-foreground">
-              {color ? ` · ${COLOR_CAMISETA[color].etiqueta}` : " · se puede cambiar en cada partido"}
+              {color ? ` · ${COLOR_CAMISETA[color].etiqueta}` : " · elegí una"}
             </span>
           </p>
           <SelectorCamiseta valor={color} onChange={elegirColor} etiqueta="Camiseta del equipo" />
         </div>
+
+        {categorias && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="eq-categoria">Categoría</FieldLabel>
+              <Select
+                value={categoriaId || undefined}
+                onValueChange={(v) => {
+                  setCategoriaId(v)
+                  setZonaId("")
+                }}
+              >
+                <SelectTrigger id="eq-categoria" className="w-full">
+                  <SelectValue placeholder="Elegí la categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categorias.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nombre}
+                      {c.tope_handicap != null && ` (tope ${formatearHandicap(c.tope_handicap)})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="eq-zona">Zona</FieldLabel>
+              <Select
+                value={zonaId || SIN_ZONA}
+                onValueChange={(v) => setZonaId(v === SIN_ZONA ? "" : v)}
+                disabled={!categoria || categoria.zonas.length === 0}
+              >
+                <SelectTrigger id="eq-zona" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SIN_ZONA}>{categoria?.zonas.length ? "Sin zona (después la asignás)" : "La categoría no tiene zonas"}</SelectItem>
+                  {categoria?.zonas.map((z) => (
+                    <SelectItem key={z.id} value={z.id}>
+                      {z.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+        )}
+
+        {excedeTope && (
+          <Alert className="border-alerta/40 bg-alerta-suave text-alerta">
+            <AlertTriangleIcon />
+            <AlertDescription className="text-alerta">
+              El equipo suma {formatearHandicap(total)} de hándicap y el tope de {categoria!.nombre} es{" "}
+              {formatearHandicap(categoria!.tope_handicap)}. Se puede guardar igual.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Integrantes */}
         <div>

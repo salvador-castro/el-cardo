@@ -90,7 +90,7 @@ export default async function InicioPage() {
               {proximas.data.map((a) => (
                 <li key={a.id}>
                   <Link
-                    href={a.tipo === "torneo" ? "/torneos" : `/actividades/${a.id}`}
+                    href={a.tipo === "torneo" ? `/torneos/${a.id}` : `/actividades/${a.id}`}
                     className="-mx-2 flex items-center gap-4 rounded-lg px-2 py-3 transition-colors hover:bg-muted/50"
                   >
                     <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-marino text-crema">

@@ -34,6 +34,7 @@ import {
   ordenarPorApellido,
   sumaHandicap,
   type ActividadDetalle,
+  type CategoriaDetalle,
   type EquipoDetalle,
   type ParticipanteDetalle,
 } from "@/lib/actividades/detalle"
@@ -53,11 +54,14 @@ export function TabParticipantes({
   equipos,
   participantes,
   jugadores,
+  categorias,
 }: {
   actividad: ActividadDetalle
   equipos: EquipoDetalle[]
   participantes: ParticipanteDetalle[]
   jugadores: JugadorOpcion[]
+  // Torneos: los equipos se agrupan por categoría.
+  categorias?: CategoriaDetalle[]
 }) {
   const [equipoAbierto, setEquipoAbierto] = useState<EquipoEnEdicion | null>(null)
   const [agregarAbierto, setAgregarAbierto] = useState(false)
@@ -70,12 +74,66 @@ export function TabParticipantes({
   const deEquipo = (id: string | null) => ordenarPorApellido(participantes.filter((p) => p.equipo_id === id))
   const sinEquipo = deEquipo(null)
 
-  const nuevoEquipo = (jugadoresIniciales: string[] = []) => {
+  const nuevoEquipo = (jugadoresIniciales: string[] = [], categoriaId: string | null = null) => {
+    // En torneos los equipos tienen nombre propio; en prácticas se sugiere un color.
     const usados = new Set(equipos.map((e) => e.nombre.toLowerCase()))
-    const nombre = NOMBRES_SUGERIDOS.find((n) => !usados.has(n.toLowerCase())) ?? ""
+    const nombre = categorias ? "" : (NOMBRES_SUGERIDOS.find((n) => !usados.has(n.toLowerCase())) ?? "")
     // Si el nombre sugerido es un color, la camiseta arranca con ese color.
     const color = COLORES_CAMISETA.find((c) => COLOR_CAMISETA[c].etiqueta === nombre) ?? null
-    setEquipoAbierto({ id: null, nombre, jugadores: jugadoresIniciales, color })
+    setEquipoAbierto({ id: null, nombre, jugadores: jugadoresIniciales, color, categoria_id: categoriaId, zona_id: null })
+  }
+
+  const abrirEquipo = (e: EquipoDetalle, lista: ParticipanteDetalle[]) =>
+    setEquipoAbierto({
+      id: e.id,
+      nombre: e.nombre,
+      jugadores: lista.map((p) => p.jugador.id),
+      color: e.color,
+      categoria_id: e.categoria_id,
+      zona_id: e.zona_id,
+    })
+
+  const tarjetaEquipo = (e: EquipoDetalle) => {
+    const lista = deEquipo(e.id)
+    const hcp = sumaHandicap(lista.map((p) => p.jugador))
+    const categoria = categorias?.find((c) => c.id === e.categoria_id)
+    const zona = categoria?.zonas.find((z) => z.id === e.zona_id)
+    const excede = categoria?.tope_handicap != null && hcp > categoria.tope_handicap
+    const detalle = [
+      categorias && (zona ? zona.nombre : categoria?.zonas.length ? "sin zona" : null),
+      excede && `supera el tope (${formatearHandicap(categoria!.tope_handicap)})`,
+      !e.color && "sin camiseta",
+    ]
+      .filter(Boolean)
+      .join(" · ")
+    return (
+      <GrupoParticipantes
+        key={e.id}
+        titulo={e.nombre}
+        icono={
+          editable && !e.color ? (
+            <button
+              type="button"
+              onClick={() => abrirEquipo(e, lista)}
+              title="Elegir camiseta"
+              aria-label={`Elegir la camiseta de ${e.nombre}`}
+              className="rounded-md p-0.5 hover:bg-muted"
+            >
+              <Camiseta color={null} className="size-7" />
+            </button>
+          ) : (
+            <Camiseta color={e.color} className="size-7" />
+          )
+        }
+        lista={lista}
+        fila={fila}
+        vacio="Sin jugadores."
+        detalle={detalle || undefined}
+        alerta={excede}
+        hcp={hcp}
+        acciones={editable && <AccionesEquipo equipo={e} lista={lista} onEditar={() => abrirEquipo(e, lista)} />}
+      />
+    )
   }
 
   const fila = (p: ParticipanteDetalle) => (
@@ -166,49 +224,46 @@ export function TabParticipantes({
               </Button>
             </div>
           )}
-          <div className="grid gap-4 md:grid-cols-2">
-            {equipos.map((e) => {
-              const lista = deEquipo(e.id)
-              return (
-                <GrupoParticipantes
-                  key={e.id}
-                  titulo={e.nombre}
-                  icono={
-                    editable && !e.color ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEquipoAbierto({ id: e.id, nombre: e.nombre, jugadores: lista.map((p) => p.jugador.id), color: null })
-                        }
-                        title="Elegir camiseta"
-                        aria-label={`Elegir la camiseta de ${e.nombre}`}
-                        className="rounded-md p-0.5 hover:bg-muted"
-                      >
-                        <Camiseta color={null} className="size-7" />
-                      </button>
+          {categorias ? (
+            <>
+              {categorias.map((c) => {
+                const deCategoria = equipos.filter((e) => e.categoria_id === c.id)
+                return (
+                  <section key={c.id} className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+                      <h3 className="font-heading text-2xl font-semibold">
+                        {c.nombre}
+                        <span className="ml-2 font-sans text-sm font-normal text-muted-foreground">
+                          {deCategoria.length} {deCategoria.length === 1 ? "equipo" : "equipos"}
+                          {c.tope_handicap != null && ` · tope ${formatearHandicap(c.tope_handicap)} de hándicap`}
+                        </span>
+                      </h3>
+                      {editable && (
+                        <Button variant="outline" className="bg-card" onClick={() => nuevoEquipo([], c.id)}>
+                          <UsersIcon /> Armar equipo en {c.nombre}
+                        </Button>
+                      )}
+                    </div>
+                    {deCategoria.length ? (
+                      <div className="grid gap-4 md:grid-cols-2">{deCategoria.map(tarjetaEquipo)}</div>
                     ) : (
-                      <Camiseta color={e.color} className="size-7" />
-                    )
-                  }
-                  lista={lista}
-                  fila={fila}
-                  vacio="Sin jugadores."
-                  detalle={e.color ? undefined : "sin camiseta"}
-                  hcp={sumaHandicap(lista.map((p) => p.jugador))}
-                  acciones={
-                    editable && (
-                      <AccionesEquipo
-                        equipo={e}
-                        lista={lista}
-                        onEditar={() =>
-                          setEquipoAbierto({ id: e.id, nombre: e.nombre, jugadores: lista.map((p) => p.jugador.id), color: e.color })
-                        }
-                      />
-                    )
-                  }
-                />
-              )
-            })}
+                      <p className="rounded-xl border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+                        Todavía no hay equipos en esta categoría.
+                      </p>
+                    )}
+                  </section>
+                )
+              })}
+              {equipos.some((e) => !e.categoria_id) && (
+                <section className="space-y-3">
+                  <h3 className="border-b pb-2 font-heading text-2xl font-semibold">Sin categoría</h3>
+                  <div className="grid gap-4 md:grid-cols-2">{equipos.filter((e) => !e.categoria_id).map(tarjetaEquipo)}</div>
+                </section>
+              )}
+            </>
+          ) : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            {!categorias && equipos.map(tarjetaEquipo)}
             {sinEquipo.length > 0 && (
               <GrupoParticipantes
                 titulo="Anotados sin equipo"
@@ -239,6 +294,7 @@ export function TabParticipantes({
         jugadores={jugadores}
         participantes={participantes}
         profesorId={profesorId}
+        categorias={categorias}
       />
       <ModalAgregarJugadores
         abierto={agregarAbierto}
@@ -276,7 +332,9 @@ function GrupoParticipantes({
   apagado,
   icono,
   detalle,
+  alerta,
 }: {
+  alerta?: boolean
   icono?: ReactNode
   detalle?: string
   titulo: string
@@ -295,7 +353,7 @@ function GrupoParticipantes({
           <CardTitle className="truncate font-heading text-xl font-semibold">{titulo}</CardTitle>
           <p className="text-xs text-muted-foreground">
             {lista.length} {lista.length === 1 ? "jugador" : "jugadores"}
-            {detalle && ` · ${detalle}`}
+            {detalle && <span className={cn(alerta && "font-medium text-alerta")}> · {detalle}</span>}
           </p>
         </div>
         {hcp !== undefined && (

@@ -1,10 +1,10 @@
 import type { EstadoCobro } from "@/components/cobros/insignias-cobro"
 import type { ColorCamiseta } from "./colores"
-import type { Asistencia, EstadoActividad, JugadorOpcion, TipoActividadGestion } from "./constantes"
+import type { Asistencia, EstadoActividad, JugadorOpcion, TipoActividad } from "./constantes"
 
 export type ActividadDetalle = {
   id: string
-  tipo: TipoActividadGestion
+  tipo: TipoActividad
   nombre: string
   inicio: string
   estado: EstadoActividad
@@ -13,7 +13,29 @@ export type ActividadDetalle = {
   profesor: { id: string; nombre: string; apellido: string; handicap: number } | null
 }
 
-export type EquipoDetalle = { id: string; nombre: string; color: ColorCamiseta | null }
+export type EquipoDetalle = {
+  id: string
+  nombre: string
+  color: ColorCamiseta | null
+  // Solo torneos.
+  categoria_id: string | null
+  zona_id: string | null
+}
+
+export type FormatoCategoria = "puntos" | "eliminacion" | "zonas_llave"
+
+// Categoría de un torneo, con sus zonas.
+export type CategoriaDetalle = {
+  id: string
+  nombre: string
+  tope_handicap: number | null
+  orden: number
+  formato: FormatoCategoria
+  puntos_victoria: number
+  puntos_empate: number
+  puntos_derrota: number
+  zonas: { id: string; nombre: string; orden: number }[]
+}
 
 export type ParticipanteDetalle = {
   id: string // participación
@@ -38,6 +60,7 @@ export type PartidoDetalle = {
   goles_a: number | null
   goles_b: number | null
   estado: "programado" | "jugado" | "suspendido"
+  chukkers: number
 }
 
 export const ordenarPorApellido = <T extends { jugador: { apellido: string; nombre: string } }>(lista: T[]) =>

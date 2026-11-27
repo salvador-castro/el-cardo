@@ -11,9 +11,9 @@ Leer junto con `docs/ESPECIFICACION.md` (la especificación original). **Lo que 
 |---|---|
 | 1. Setup, Supabase, auth, layout, migraciones, RLS, seed | ✅ Terminada y revisada |
 | 2. Jugadores | ✅ Terminada y revisada (con ajustes pedidos por el cliente) |
-| 3. Actividades (prácticas y clases, equipos, asistencia) | 🔎 Hecha, **esperando OK del cliente** (migraciones aplicadas en Supabase; falta commit/deploy) |
-| 4. Torneos | ⏭️ Próxima |
-| 5. Cobros + Mercado Pago + mails | Pendiente (con cambios acordados, ver §4) |
+| 3. Actividades (prácticas y clases, equipos, partidos, asistencia) | ✅ Terminada, revisada y en producción (commit `6f02e41`, 27/11/2026) |
+| 4. Torneos (+ rotación a la americana en prácticas) | ✅ Terminada, revisada y en producción (28/11/2026) |
+| 5. Cobros + Mercado Pago + mails | ⏭️ **Próxima** (con cambios acordados, ver §4) |
 | 6. Exportaciones, resumen y crons | Pendiente |
 
 Modo de trabajo acordado: **una etapa por vez**. Antes de cerrar una etapa: `npm run typecheck`, `npm run lint`, `npm run build` y `npm run db:probar`. Después contar qué quedó, qué falta y cómo probarlo, y **frenar hasta que el cliente dé el OK**. El cliente prefiere ir "de a pasos": si una idea nueva corresponde a otra etapa, anotarla y seguir el orden.
@@ -26,7 +26,7 @@ UI y textos en español rioplatense; código, tablas y columnas en español sin 
 
 - **Repo:** https://github.com/salvador-castro/el-cardo (rama `main`, **público**; se recomendó pasarlo a privado).
 - **Producción:** https://el-cardo-polo.vercel.app (proyecto Vercel `el-cardo`, scope `salvador-castros-projects`). Cada push a `main` despliega solo. `el-cardo.vercel.app` es de otra cuenta. A futuro, si el club aprueba: `gestion.elcardopoloclub.com`.
-- **Supabase:** proyecto `elcardopoloclub` (linkeado con la CLI). Migraciones aplicadas hasta `20261127000009_color_equipo.sql` (27/11/2026). Seed cargado. Tipos regenerados con `npm run db:tipos`.
+- **Supabase:** proyecto `elcardopoloclub` (linkeado con la CLI). Migraciones aplicadas hasta `20261128000010_torneos.sql` (28/11/2026). Tipos regenerados con `npm run db:tipos`. Seed cargado. Tipos regenerados con `npm run db:tipos`.
 - **Usuario de demo:** `admin@elcardo.test` (la contraseña la tiene el cliente; no se guarda en el repo).
 - **Mercado Pago:** se prueba con credenciales de **producción** (los pagos son reales; no se puede pagar con la misma cuenta dueña de la app). Webhook configurado en MP → `https://el-cardo-polo.vercel.app/api/webhooks/mercadopago`, evento "Pagos (legacy)".
 
@@ -52,7 +52,7 @@ Completar a mano en `.env.local` las secretas (`SUPABASE_SECRET_KEY`, `MP_ACCESS
 - **shadcn/ui** estilo `radix-nova` (Tailwind 4). Formularios con `Field`/`FieldLabel`/`FieldError` + react-hook-form + zod v4.
 - **Supabase CLI 3.x**: apunta a la base local por defecto → **siempre `--remote`** (`npm run db:push`, `db:seed`, `db:tipos` ya lo incluyen). Sin Docker en la máquina.
 - **Permisos:** los proyectos nuevos de Supabase **no** dan GRANT automático sobre `public` a `authenticated`/`service_role`. La migración `..._000006_permisos_explicitos.sql` lo resuelve y deja default privileges. Si una tabla nueva da "permission denied", revisar eso primero.
-- **Pruebas del SQL sin Supabase:** `npm run db:probar` levanta Postgres 17 en memoria (PGlite) con stubs de auth/storage, aplica migraciones + seed y corre ~50 chequeos de reglas y RLS (`scripts/db/probar.mjs`). Agregar chequeos ahí cuando se cambie el SQL.
+- **Pruebas del SQL sin Supabase:** `npm run db:probar` levanta Postgres 17 en memoria (PGlite) con stubs de auth/storage, aplica migraciones + seed y corre ~62 chequeos de reglas y RLS (`scripts/db/probar.mjs`). Agregar chequeos ahí cuando se cambie el SQL.
 - **Tipos:** `npm run db:tipos` (desde Supabase). `db:tipos:local` genera desde las migraciones si no hay conexión.
 - **Lógica de negocio en la base** (triggers): historial de hándicap, auditoría, cobro automático al anotar jugador, anulación al quitar/cancelar, actualización al cambiar precio, invalidación de links al cambiar monto o estado, eventos de cobro. Funciones listas: `generar_cuotas_sociales`, `procesar_vencimientos`, `crear_link_pago`, `registrar_pago_mp`, `pago_publico`, `buscar_jugadores`, `buscar_jugadores_lista`, `generar_todos_contra_todos`. Vistas: `jugadores_resumen`, `actividades_resumen`, `equipos_resumen`, `posiciones`, `goleadores_torneo`.
 - **Storage:** buckets privados `fotos`, `documentos`, `comprobantes`. Se sube **desde el navegador** con la sesión del usuario (`src/lib/storage.ts`, evita el límite de 4,5 MB de las funciones) y se registra con una server action. Se muestran con URLs firmadas (`src/lib/supabase/urls-firmadas.ts`).
@@ -91,11 +91,27 @@ Completar a mano en `.env.local` las secretas (`SUPABASE_SECRET_KEY`, `MP_ACCESS
   - Ventana de partido compacta: dos selects "Seleccionar equipo" (el elegido de un lado no aparece en el otro; los equipos que ya tienen otro partido no se ofrecen, salvo con "Mostrar también los que ya tienen partido" para revanchas/finales) con los goles al lado, y hora/cancha abajo.
   - Equipos y partidos aplican a **todas las actividades salvo clases**: en la etapa 4 los torneos usan los mismos componentes.
 
-### Para la etapa 4 (Torneos)
+### Hecho en la etapa 4 (Torneos)
+- `/torneos`: listado en tarjetas y alta/edición (nombre, inicio y fin, precio base, notas). Detalle con pestañas **General, Categorías, Equipos, Fixture, Posiciones, Cobros**.
+- **Categorías**: nombre, tope de hándicap, **formato** (`puntos`, `zonas_llave`, `eliminacion`) y puntos por ganar/empatar/perder (3/1/0 por defecto). Zonas (crear, renombrar, eliminar) y asignación de equipos a zona.
+- **Equipos**: el mismo panel y modal de prácticas (`TabParticipantes`/`ModalEquipo` con la prop `categorias`), agrupados por categoría, con categoría y zona en el modal y aviso si superan el tope.
+- **Fixture**: por categoría, fase de grupos por zona ("Todos contra todos") y **llave** en columnas por fase. Cada lado de un partido es un equipo, "Ganador/Perdedor de [partido]" o "N.º de [zona]" (`partidos.desde_*`). Los partidos se nombran solos ("Cuartos 1", "Semi 2", "Final", `src/lib/torneos/nombres.ts`).
+- **Avance automático** en la base (migración `000010`): un trigger BEFORE completa los equipos desde su origen y uno AFTER recalcula los dependientes cuando cambia un resultado o termina una zona (`zona_terminada`). En la llave no puede haber empate.
+- **Resultado**: goles, goles por chukker opcionales (tienen que sumar el total) y goleadores (tienen que jugar en el partido), todo en `guardar_resultado`.
+- **Posiciones**: vista `posiciones` por puntos (puntos → diferencia → goles a favor), marca a los que pasan a la llave; goleadores por categoría; campeón cuando se juega la final.
+- **Rotación a la americana (prácticas)** (rehecha según el modelo del cliente): grilla con ✓ / **BAJA** por chukker, fila **"HC en cancha"** (suma del hándicap de los que juegan cada chukker) y "Handicap total" por equipo; el reparto automático pone las bajas **de a 2 chukkers seguidos** (1-2, 3-4, 5-6) si los chukkers son pares, y cada uno descansa un tramo antes de repetir. El botón "Rotación" está en todos los partidos de práctica con los dos equipos. Detalle técnico: tabla `partido_descansos`; cada partido tiene `chukkers` (4 por defecto). Si un equipo tiene más de 4, aparece "Rotación": grilla chukker × jugador, reparto automático parejo (descansan primero los de menor hándicap; con 5 en 4 chukkers el de mayor hándicap juega todos) y edición a mano. **Solo prácticas**; si en torneos también rotan, se reusa `ContenidoRotacion`.
+
+### Para la etapa 4 (Torneos) — decisiones
+- **Decidido (27/11/2026):**
+  - Los torneos son **otra sección** (`/torneos`): no aparecen en el listado ni en el calendario de Actividades.
+  - **Formato por categoría:** por **puntos** (todos contra todos, en una o más zonas), **eliminación directa** (llave: p. ej. 1 vs 5, 6 vs 3, y los ganadores se cruzan), o **zonas + llave** (p. ej. dos zonas de 4 y avanzan los dos primeros).
+  - **Avance automático según resultados:** cada lado de un partido puede ser un equipo, "Ganador del partido X" o "Puesto N de la zona Y"; cuando se carga el resultado (o termina la zona) el equipo se completa solo.
+- **Pedido para prácticas (aclaración del cliente):** los partidos suelen ser de 4 por equipo, pero puede haber 5 en cada uno o 5 vs 4. Se juega **"a la americana"**: todos juegan, pero cada uno descansa un chukker. Hace falta una **rotación por chukker** (quién descansa en cada uno).
 - `/actividades` no muestra torneos; el inicio y la ficha del jugador los muestran sin enlace (o enlazan a `/torneos`). Al hacer la etapa 4, decidir si aparecen en el listado/calendario de actividades.
 - Reutilizar `ModalEquipo`, `SelectorJugadores`, `ModalAgregarVarios` y `TabPartidos`/`SelectorCamiseta` (los partidos de torneo además llevan categoría, zona y fase) (`src/components/actividades/detalle/`), y `guardar_equipo`, que ya sirve para torneos.
 
 ### Pedido para la etapa 6 (Exportaciones)
+- **Exportar la planilla de rotación** como imagen, igual al modelo del cliente: logo, "PRÁCTICA · N CHUKKERS", club, día y hora; por equipo, nombre, handicap total, jugadores con hándicap, ✓/BAJA por chukker y fila "HC EN CANCHA".
 - **Exportar los partidos de una práctica a PNG** (pedido al revisar la etapa 3): logo del club, fecha y hora de la actividad, y cada partido con sus dos equipos; de cada equipo: nombre, camiseta (color), hándicap total y jugadores (con su hándicap). Hacerlo con `next/og` como el resto de las imágenes; botón "Exportar imagen" en la pestaña Partidos. **Formato: horizontal** (p. ej. 1920×1080). Se tiene que poder exportar **todos los partidos** en una imagen **o un partido solo** (botón en cada tarjeta de partido). Si son muchos partidos, la imagen de "todos" tiene que acomodarlos (grilla o varias imágenes).
 
 ### Acordado para la etapa 5 (Cobros) — rediseño del cobro desde la ficha

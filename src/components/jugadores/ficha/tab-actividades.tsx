@@ -75,13 +75,12 @@ export function TabActividades({
                       <Icono className="size-4" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      {p.actividad.tipo === "torneo" ? (
-                        <p className="truncate font-medium">{p.actividad.nombre}</p>
-                      ) : (
-                        <Link href={`/actividades/${p.actividad.id}`} className="block truncate font-medium hover:underline">
-                          {p.actividad.nombre}
-                        </Link>
-                      )}
+                      <Link
+                        href={`/${p.actividad.tipo === "torneo" ? "torneos" : "actividades"}/${p.actividad.id}`}
+                        className="block truncate font-medium hover:underline"
+                      >
+                        {p.actividad.nombre}
+                      </Link>
                       <p className="text-xs text-muted-foreground">
                         {etiqueta} · {formatearFecha(p.actividad.inicio)} {formatearHora(p.actividad.inicio)} h
                         {p.equipo && ` · Equipo ${p.equipo.nombre}`}

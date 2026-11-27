@@ -33,6 +33,8 @@ function revalidar(actividadId?: string) {
   revalidatePath("/")
   revalidatePath("/jugadores")
   revalidatePath("/jugadores/[id]", "page")
+  revalidatePath("/torneos")
+  if (actividadId) revalidatePath(`/torneos/${actividadId}`)
 }
 
 function aFila(d: DatosActividad) {
@@ -101,7 +103,15 @@ export async function cambiarEstadoActividad(id: string, estado: EstadoActividad
 
 export async function guardarEquipo(
   actividadId: string,
-  datos: { equipoId: string | null; nombre: string; jugadores: string[]; color: ColorCamiseta | null },
+  datos: {
+    equipoId: string | null
+    nombre: string
+    jugadores: string[]
+    color: ColorCamiseta | null
+    // Torneos: categoría y zona del equipo.
+    categoriaId?: string
+    zonaId?: string | null
+  },
 ): Promise<Resultado<{ id: string }>> {
   await requerirUsuario()
   const nombre = typeof datos.nombre === "string" ? datos.nombre.trim() : ""
@@ -110,6 +120,9 @@ export async function guardarEquipo(
   }
   if (!nombre) return { ok: false, error: "Ingresá el nombre del equipo." }
   if (datos.color !== null && !esColorCamiseta(datos.color)) return { ok: false, error: "Color de camiseta inválido." }
+  if ((datos.categoriaId !== undefined && !UUID.test(datos.categoriaId)) || (datos.zonaId && !UUID.test(datos.zonaId))) {
+    return { ok: false, error: "Categoría o zona inválida." }
+  }
   if (nombre.length > 60) return { ok: false, error: "El nombre es demasiado largo." }
 
   const supabase = await createClient()
@@ -121,10 +134,16 @@ export async function guardarEquipo(
   })
   if (error) return { ok: false, error: mensajeError(error) }
 
-  const { error: errColor } = await supabase.from("equipos").update({ color: datos.color }).eq("id", data)
+  const { error: errColor } = await supabase
+    .from("equipos")
+    .update({
+      color: datos.color,
+      ...(datos.categoriaId !== undefined && { categoria_id: datos.categoriaId, zona_id: datos.zonaId ?? null }),
+    })
+    .eq("id", data)
   if (errColor) {
     revalidar(actividadId)
-    return { ok: false, error: "El equipo se guardó, pero no se pudo guardar la camiseta." }
+    return { ok: false, error: `El equipo se guardó, pero no se pudo guardar la camiseta o la categoría. ${mensajeError(errColor)}` }
   }
 
   revalidar(actividadId)
@@ -444,6 +463,7 @@ export async function guardarPartido(
     color_b: d.color_b,
     inicio: d.hora ? aInicioISO(fechaHoraAR(act.inicio).fecha, d.hora) : null,
     cancha: d.cancha === "" ? null : d.cancha,
+    chukkers: d.chukkers,
     goles_a: jugado ? d.goles_a : null,
     goles_b: jugado ? d.goles_b : null,
     estado: jugado ? ("jugado" as const) : ("programado" as const),
@@ -467,5 +487,29 @@ export async function eliminarPartido(partidoId: string): Promise<Resultado> {
   if (error) return { ok: false, error: mensajeError(error) }
 
   revalidar(data.actividad_id)
+  return { ok: true, datos: undefined }
+}
+
+// Rotación "a la americana": reemplaza quién descansa en cada chukker.
+export async function guardarDescansos(
+  partidoId: string,
+  descansos: { jugador_id: string; chukker: number }[],
+): Promise<Resultado> {
+  await requerirUsuario()
+  if (
+    !UUID.test(partidoId) ||
+    !Array.isArray(descansos) ||
+    descansos.length > 80 ||
+    !descansos.every((d) => UUID.test(d.jugador_id) && Number.isInteger(d.chukker) && d.chukker >= 1 && d.chukker <= 8)
+  ) {
+    return { ok: false, error: "Datos inválidos." }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("guardar_descansos", { p_partido_id: partidoId, p_descansos: descansos })
+  if (error) return { ok: false, error: mensajeError(error) }
+
+  const { data } = await supabase.from("partidos").select("actividad_id").eq("id", partidoId).single()
+  revalidar(data?.actividad_id)
   return { ok: true, datos: undefined }
 }
