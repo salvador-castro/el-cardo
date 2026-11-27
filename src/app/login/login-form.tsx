@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
 import { iniciarSesion } from "./actions"
 import { esquemaLogin, type DatosLogin } from "./esquema"
 
@@ -54,9 +55,8 @@ export function LoginForm({ next, errorInicial }: { next?: string; errorInicial?
 
         <Field data-invalid={!!form.formState.errors.password}>
           <FieldLabel htmlFor="password">Contraseña</FieldLabel>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="current-password"
             aria-invalid={!!form.formState.errors.password}
             {...form.register("password")}
