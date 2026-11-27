@@ -15,13 +15,19 @@ export function mensajeSaludo(nombre: string) {
   return `Hola ${nombre}! Te escribimos de ${CLUB}.`
 }
 
-export function mensajeRecordatorio(nombre: string, cobros: CobroParaMensaje[]) {
+// `linkPago`: URL pública /pagar/[token] con el botón de Mercado Pago.
+// Desde la etapa 5 el recordatorio genera el link de los cobros y lo incluye siempre.
+export function mensajeRecordatorio(nombre: string, cobros: CobroParaMensaje[], linkPago?: string) {
   const hoy = hoyISO()
   const total = cobros.reduce((t, c) => t + Number(c.monto), 0)
   const lineas = cobros.map((c) => {
     const venc = c.vencimiento < hoy ? `venció el ${formatearFecha(c.vencimiento)}` : `vence el ${formatearFecha(c.vencimiento)}`
     return `• ${c.descripcion}: ${formatearMonto(c.monto)} (${venc})`
   })
+
+  const comoPagar = linkPago
+    ? [`Podés pagarlo con Mercado Pago (tarjeta, débito o dinero en cuenta) desde este link:`, linkPago]
+    : ["Podés pagarlo con Mercado Pago: respondé este mensaje y te enviamos el link."]
 
   return [
     `Hola ${nombre}! Te escribimos de ${CLUB}.`,
@@ -31,7 +37,20 @@ export function mensajeRecordatorio(nombre: string, cobros: CobroParaMensaje[]) 
     "",
     `Total: ${formatearMonto(total)}`,
     "",
-    "Podés abonarlo en el club o por transferencia. Si ya lo pagaste, desestimá este mensaje. ¡Gracias!",
+    ...comoPagar,
+    "",
+    "Si ya lo pagaste, desestimá este mensaje. ¡Gracias!",
+  ].join("\n")
+}
+
+export function mensajeLinkPago(nombre: string, concepto: string, monto: number, linkPago: string) {
+  return [
+    `Hola ${nombre}! Te escribimos de ${CLUB}.`,
+    "",
+    `Te enviamos el link para pagar ${concepto} por ${formatearMonto(monto)} con Mercado Pago:`,
+    linkPago,
+    "",
+    "¡Gracias!",
   ].join("\n")
 }
 
