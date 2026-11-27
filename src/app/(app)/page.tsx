@@ -88,20 +88,25 @@ export default async function InicioPage() {
           {proximas.data?.length ? (
             <ul className="divide-y divide-border">
               {proximas.data.map((a) => (
-                <li key={a.id} className="flex items-center gap-4 py-3">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-marino text-crema">
-                    <CalendarDaysIcon className="size-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{a.nombre}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatearFechaLarga(a.inicio)} · {formatearHora(a.inicio)} h
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    {a.tipo && <Badge variant="secondary">{ETIQUETA_TIPO[a.tipo]}</Badge>}
-                    <span className="text-xs text-muted-foreground">{a.participantes ?? 0} anotados</span>
-                  </div>
+                <li key={a.id}>
+                  <Link
+                    href={a.tipo === "torneo" ? "/torneos" : `/actividades/${a.id}`}
+                    className="-mx-2 flex items-center gap-4 rounded-lg px-2 py-3 transition-colors hover:bg-muted/50"
+                  >
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-marino text-crema">
+                      <CalendarDaysIcon className="size-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{a.nombre}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatearFechaLarga(a.inicio)} · {formatearHora(a.inicio)} h
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {a.tipo && <Badge variant="secondary">{ETIQUETA_TIPO[a.tipo]}</Badge>}
+                      <span className="text-xs text-muted-foreground">{a.participantes ?? 0} anotados</span>
+                    </div>
+                  </Link>
                 </li>
               ))}
             </ul>

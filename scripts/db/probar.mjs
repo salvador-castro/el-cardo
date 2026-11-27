@@ -109,6 +109,65 @@ const l3 = (await q(`select (crear_link_pago(array['${pend}']::uuid[])).*`))[0]
 await db.exec(`update cobros set monto = monto + 1000 where id='${pend}'`)
 check('Editar monto invalida el link', (await q(`select estado from links_pago where id='${l3.id}'`))[0].estado === 'anulado')
 
+// ---- Etapa 3: equipos y participantes ----
+const J = (n) => `00000000-0000-4000-a000-${String(n).padStart(12, '0')}`
+const eq1 = (await q(`select guardar_equipo('${act}', 'Rojo', array['${J(3)}','${J(11)}','${J(12)}']::uuid[]) id`))[0].id
+const enEq = await q(`select jugador_id from participaciones where equipo_id='${eq1}' order by jugador_id`)
+check(`guardar_equipo crea el equipo con 3 jugadores (${enEq.length})`, enEq.length === 3)
+check('guardar_equipo anota a los nuevos y les crea cobro',
+  Number((await q(`select count(*) c from cobros where actividad_id='${act}' and jugador_id in ('${J(11)}','${J(12)}') and estado='pendiente'`))[0].c) === 2)
+await q(`select guardar_equipo('${act}', 'Rojo', array['${J(3)}','${J(11)}']::uuid[], '${eq1}')`)
+await db.exec(`update equipos set color = 'rojo' where id = '${eq1}'`)
+check('El equipo guarda su camiseta', (await q(`select color from equipos where id='${eq1}'`))[0].color === 'rojo')
+await expectError('Camiseta de equipo fuera de la lista', `update equipos set color = 'fucsia' where id = '${eq1}'`, 'equipos_color_valido')
+const salio = await q(`select equipo_id from participaciones where actividad_id='${act}' and jugador_id='${J(12)}'`)
+check('Quien sale del equipo sigue anotado sin equipo', salio.length === 1 && salio[0].equipo_id === null)
+await expectError('Dos equipos con el mismo nombre', `select guardar_equipo('${act}', 'Rojo', '{}'::uuid[])`, 'duplicate')
+const clase = (await q(`select id, profesor_id from actividades where tipo='clase' and estado='programada' limit 1`))[0]
+await expectError('Las clases no tienen equipos', `select guardar_equipo('${clase.id}', 'A', '{}'::uuid[])`, 'clases no tienen')
+const ag1 = (await q(`select agregar_participantes('${act}', array['${J(13)}','${J(14)}','${J(3)}']::uuid[]) n`))[0].n
+const ag2 = (await q(`select agregar_participantes('${act}', array['${J(13)}','${J(14)}']::uuid[]) n`))[0].n
+check(`agregar_participantes ignora a los ya anotados (${ag1} y ${ag2})`, ag1 === 2 && ag2 === 0)
+await q(`select agregar_participantes('${act}', array['${J(12)}']::uuid[], '${eq1}')`)
+check('agregar_participantes con equipo mueve al ya anotado',
+  (await q(`select equipo_id from participaciones where actividad_id='${act}' and jugador_id='${J(12)}'`))[0].equipo_id === eq1)
+await expectError('No se cambia el tipo de una actividad', `update actividades set tipo='clase' where id='${act}'`, 'tipo')
+const alumno = (await q(`select jugador_id from participaciones where actividad_id='${clase.id}' limit 1`))[0].jugador_id
+await db.exec(`update jugadores set es_profesor = true where id='${alumno}'`)
+await expectError('El profesor no puede ser alumno de la misma clase', `update actividades set profesor_id='${alumno}' where id='${clase.id}'`, 'anotado como alumno')
+await db.exec(`update jugadores set es_profesor = false where id='${alumno}'`)
+
+// ---- Etapa 3 (ajustes): precio especial por jugador ----
+const cobroDe = async (n) => (await q(`select c.estado, c.monto::numeric m from cobros c join participaciones p on p.id=c.participacion_id
+  where p.actividad_id='${act}' and p.jugador_id='${J(n)}' and c.estado <> 'anulado'`))
+await db.exec(`update participaciones set precio = 10000 where actividad_id='${act}' and jugador_id='${J(11)}'`)
+check('Precio especial actualiza su cobro impago', Number((await cobroDe(11))[0]?.m) === 10000)
+await db.exec(`update actividades set precio = 30000 where id='${act}'`)
+check('Cambio de precio de la actividad respeta el precio especial',
+  Number((await cobroDe(11))[0]?.m) === 10000 && Number((await cobroDe(12))[0]?.m) === 30000)
+await db.exec(`update participaciones set precio = 0 where actividad_id='${act}' and jugador_id='${J(11)}'`)
+check('Precio especial 0 anula su cobro', (await cobroDe(11)).length === 0)
+await db.exec(`update participaciones set precio = null where actividad_id='${act}' and jugador_id='${J(11)}'`)
+check('Volver al precio de la actividad crea el cobro', Number((await cobroDe(11))[0]?.m) === 30000)
+await db.exec(`update cobros set estado='pagado', medio_pago='efectivo', pagado_at=now()
+  where participacion_id = (select id from participaciones where actividad_id='${act}' and jugador_id='${J(13)}')`)
+await expectError('No se cambia el precio de quien ya pagó',
+  `update participaciones set precio = 1 where actividad_id='${act}' and jugador_id='${J(13)}'`, 'ya pagó')
+
+// ---- Etapa 3 (ajustes): partidos de práctica ----
+const eq2 = (await q(`select guardar_equipo('${act}', 'Azul', array['${J(14)}']::uuid[]) id`))[0].id
+await db.exec(`insert into partidos (actividad_id, equipo_a_id, equipo_b_id, color_a, color_b, fase, goles_a, goles_b, estado)
+  values ('${act}', '${eq1}', '${eq2}', 'blanco', 'azul', 'otro', 3, 2, 'jugado')`)
+check('Partido de práctica con colores y resultado', Number((await q(`select count(*) c from partidos where actividad_id='${act}'`))[0].c) === 1)
+check('Los partidos de práctica no entran en posiciones',
+  Number((await q(`select count(*) c from posiciones where equipo_id in ('${eq1}','${eq2}')`))[0].c) === 0)
+await expectError('Color de camiseta fuera de la lista', `insert into partidos (actividad_id, equipo_a_id, equipo_b_id, color_a, fase)
+  values ('${act}', '${eq1}', '${eq2}', 'fucsia', 'otro')`, 'color_a')
+await expectError('Las clases no tienen partidos', `insert into partidos (actividad_id, fase) values ('${clase.id}', 'otro')`, 'clases no tienen partidos')
+const torneo = (await q(`select id from actividades where tipo='torneo' limit 1`))[0].id
+await expectError('Partido de torneo sin categoría', `insert into partidos (actividad_id) values ('${torneo}')`, 'categoría')
+await expectError('Borrar un equipo con partido jugado', `delete from equipos where id='${eq2}'`, 'partidos_jugado_con_resultado')
+
 // Cancelar actividad anula pendientes
 await db.exec(`update actividades set estado='cancelada' where id='${act}'`)
 const canc = await q(`select estado, count(*) c from cobros where actividad_id='${act}' group by 1`)
@@ -129,6 +188,10 @@ check(`Todos contra todos no duplica cruces existentes (creó ${ttc})`, ttc === 
 const admin = '00000000-0000-4000-a000-00000000a001'
 await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${admin}', false);`)
 check('Admin ve jugadores', Number((await q(`select count(*) c from jugadores_resumen`))[0].c) === 30)
+const fin = (await q(`select a.id from actividades a where a.estado='finalizada' and a.tipo='practica'
+  and not exists (select 1 from participaciones p where p.actividad_id=a.id and p.jugador_id='${J(5)}') limit 1`))[0].id
+const agAdmin = (await q(`select agregar_participantes('${fin}', array['${J(5)}']::uuid[]) n`))[0].n
+check(`Admin anota jugadores con agregar_participantes (${agAdmin})`, agAdmin === 1)
 const del = await q(`with d as (delete from cobros returning 1) select count(*) c from d`).catch(() => [{ c: 0 }])
 check('Delete de cobros no borra nada', Number(del[0].c) === 0)
 await expectError('Admin no marca pagado por MP a mano', `update cobros set estado='pagado', medio_pago='mercadopago', pagado_at=now()
@@ -141,6 +204,7 @@ check('Usuario sin perfil no ve nada', Number((await q(`select count(*) c from j
 await db.exec(`reset role; set role anon;`)
 await expectError('Anon no accede a tablas', `select * from jugadores`, 'permission')
 await expectError('Anon no ejecuta funciones', `select generar_cuotas_sociales()`, 'permission')
+await expectError('Anon no arma equipos', `select guardar_equipo(gen_random_uuid(), 'X', '{}'::uuid[])`, 'permission')
 await db.exec(`reset role; set role service_role;`)
 check('Service role puede leer pago_publico', (await q(`select pago_publico($1) j`, [link.token]))[0].j.estado === 'pagado')
 await db.exec(`reset role;`)

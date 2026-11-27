@@ -66,3 +66,11 @@ export function nombreCompleto(j: { nombre: string | null; apellido: string | nu
 export function iniciales(j: { nombre: string | null; apellido: string | null }): string {
   return `${j.nombre?.[0] ?? ""}${j.apellido?.[0] ?? ""}`.toUpperCase()
 }
+
+// Para búsquedas: sin tildes y en minúsculas.
+export function normalizarBusqueda(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+}

@@ -1,5 +1,7 @@
 import { CalendarDaysIcon, GraduationCapIcon, TrophyIcon, UsersIcon, type LucideIcon } from "lucide-react"
 
+import Link from "next/link"
+
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatearFecha, formatearHora } from "@/lib/formato"
@@ -73,7 +75,13 @@ export function TabActividades({
                       <Icono className="size-4" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{p.actividad.nombre}</p>
+                      {p.actividad.tipo === "torneo" ? (
+                        <p className="truncate font-medium">{p.actividad.nombre}</p>
+                      ) : (
+                        <Link href={`/actividades/${p.actividad.id}`} className="block truncate font-medium hover:underline">
+                          {p.actividad.nombre}
+                        </Link>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         {etiqueta} · {formatearFecha(p.actividad.inicio)} {formatearHora(p.actividad.inicio)} h
                         {p.equipo && ` · Equipo ${p.equipo.nombre}`}
@@ -115,7 +123,9 @@ export function TabActividades({
                       <GraduationCapIcon className="size-4" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{c.nombre}</p>
+                      <Link href={`/actividades/${c.id}`} className="block truncate font-medium hover:underline">
+                        {c.nombre}
+                      </Link>
                       <p className="text-xs text-muted-foreground">
                         {formatearFecha(c.inicio)} {formatearHora(c.inicio)} h
                       </p>

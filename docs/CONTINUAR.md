@@ -11,8 +11,8 @@ Leer junto con `docs/ESPECIFICACION.md` (la especificación original). **Lo que 
 |---|---|
 | 1. Setup, Supabase, auth, layout, migraciones, RLS, seed | ✅ Terminada y revisada |
 | 2. Jugadores | ✅ Terminada y revisada (con ajustes pedidos por el cliente) |
-| 3. Actividades (prácticas y clases, equipos, asistencia) | ⏭️ **Próxima** |
-| 4. Torneos | Pendiente |
+| 3. Actividades (prácticas y clases, equipos, asistencia) | 🔎 Hecha, **esperando OK del cliente** (migraciones aplicadas en Supabase; falta commit/deploy) |
+| 4. Torneos | ⏭️ Próxima |
 | 5. Cobros + Mercado Pago + mails | Pendiente (con cambios acordados, ver §4) |
 | 6. Exportaciones, resumen y crons | Pendiente |
 
@@ -26,7 +26,7 @@ UI y textos en español rioplatense; código, tablas y columnas en español sin 
 
 - **Repo:** https://github.com/salvador-castro/el-cardo (rama `main`, **público**; se recomendó pasarlo a privado).
 - **Producción:** https://el-cardo-polo.vercel.app (proyecto Vercel `el-cardo`, scope `salvador-castros-projects`). Cada push a `main` despliega solo. `el-cardo.vercel.app` es de otra cuenta. A futuro, si el club aprueba: `gestion.elcardopoloclub.com`.
-- **Supabase:** proyecto `elcardopoloclub` (linkeado con la CLI). Migraciones aplicadas hasta `20261126000006_permisos_explicitos.sql`. Seed cargado.
+- **Supabase:** proyecto `elcardopoloclub` (linkeado con la CLI). Migraciones aplicadas hasta `20261127000009_color_equipo.sql` (27/11/2026). Seed cargado. Tipos regenerados con `npm run db:tipos`.
 - **Usuario de demo:** `admin@elcardo.test` (la contraseña la tiene el cliente; no se guarda en el repo).
 - **Mercado Pago:** se prueba con credenciales de **producción** (los pagos son reales; no se puede pagar con la misma cuenta dueña de la app). Webhook configurado en MP → `https://el-cardo-polo.vercel.app/api/webhooks/mercadopago`, evento "Pagos (legacy)".
 
@@ -39,6 +39,8 @@ npm install
 npx vercel link --yes --project el-cardo --scope salvador-castros-projects
 npx vercel env pull .env.local   # trae las no secretas; las sensitive vienen vacías
 ```
+Supabase CLI: tiene que estar logueada (`npx supabase login`) con la cuenta dueña de `elcardopoloclub` y linkeada (`npx supabase link --project-ref <ref>`; el ref sale de la URL del proyecto). Si la CLI falla con `Failed to start server. Is port 9234 in use?`, es la variable `BUN_INSPECT` del entorno (pasa al correrla desde Claude Code): correr con `env -u BUN_INSPECT npx supabase ...` (bash) o `$env:BUN_INSPECT=$null` antes (PowerShell).
+
 Completar a mano en `.env.local` las secretas (`SUPABASE_SECRET_KEY`, `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `CRON_SECRET`) copiándolas de la otra máquina o del gestor de contraseñas. **Nunca pegar secretos en el chat**: para subir variables a Vercel se usa un script que las pasa por stdin a `vercel env add` sin imprimirlas.
 
 ---
@@ -50,7 +52,7 @@ Completar a mano en `.env.local` las secretas (`SUPABASE_SECRET_KEY`, `MP_ACCESS
 - **shadcn/ui** estilo `radix-nova` (Tailwind 4). Formularios con `Field`/`FieldLabel`/`FieldError` + react-hook-form + zod v4.
 - **Supabase CLI 3.x**: apunta a la base local por defecto → **siempre `--remote`** (`npm run db:push`, `db:seed`, `db:tipos` ya lo incluyen). Sin Docker en la máquina.
 - **Permisos:** los proyectos nuevos de Supabase **no** dan GRANT automático sobre `public` a `authenticated`/`service_role`. La migración `..._000006_permisos_explicitos.sql` lo resuelve y deja default privileges. Si una tabla nueva da "permission denied", revisar eso primero.
-- **Pruebas del SQL sin Supabase:** `npm run db:probar` levanta Postgres 17 en memoria (PGlite) con stubs de auth/storage, aplica migraciones + seed y corre ~26 chequeos de reglas y RLS (`scripts/db/probar.mjs`). Agregar chequeos ahí cuando se cambie el SQL.
+- **Pruebas del SQL sin Supabase:** `npm run db:probar` levanta Postgres 17 en memoria (PGlite) con stubs de auth/storage, aplica migraciones + seed y corre ~50 chequeos de reglas y RLS (`scripts/db/probar.mjs`). Agregar chequeos ahí cuando se cambie el SQL.
 - **Tipos:** `npm run db:tipos` (desde Supabase). `db:tipos:local` genera desde las migraciones si no hay conexión.
 - **Lógica de negocio en la base** (triggers): historial de hándicap, auditoría, cobro automático al anotar jugador, anulación al quitar/cancelar, actualización al cambiar precio, invalidación de links al cambiar monto o estado, eventos de cobro. Funciones listas: `generar_cuotas_sociales`, `procesar_vencimientos`, `crear_link_pago`, `registrar_pago_mp`, `pago_publico`, `buscar_jugadores`, `buscar_jugadores_lista`, `generar_todos_contra_todos`. Vistas: `jugadores_resumen`, `actividades_resumen`, `equipos_resumen`, `posiciones`, `goleadores_torneo`.
 - **Storage:** buckets privados `fotos`, `documentos`, `comprobantes`. Se sube **desde el navegador** con la sesión del usuario (`src/lib/storage.ts`, evita el límite de 4,5 MB de las funciones) y se registra con una server action. Se muestran con URLs firmadas (`src/lib/supabase/urls-firmadas.ts`).
@@ -67,6 +69,34 @@ Completar a mano en `.env.local` las secretas (`SUPABASE_SECRET_KEY`, `MP_ACCESS
 - Menú **Enviar**: recordatorio de pago por WhatsApp (wa.me) o mail (mailto), mensaje libre por WhatsApp; cada envío se registra como evento `enviado` en los cobros. "Link de pago" figura deshabilitado ("etapa 5").
 - Login con botón para **mostrar/ocultar contraseña**.
 - Textos de mensajes en `src/lib/mensajes.ts`: el medio principal es **Mercado Pago**; `mensajeRecordatorio(nombre, cobros, linkPago?)` y `mensajeLinkPago(...)` ya aceptan el link.
+
+### Hechos / decididos (etapa 3)
+- Listado de actividades (solo prácticas y clases) en **lista** paginada de a 8 o **calendario semanal** (lunes a domingo; en el celular, agenda por día; "+" en cada día crea una actividad con esa fecha). Filtros colapsables: tipo, estado, desde/hasta (solo en lista).
+- **Asistencia libre**: se marca en cualquier momento (no hace falta que la actividad haya pasado). Cuando está toda marcada se ofrece finalizar.
+- **Quitar a un jugador que ya pagó**: se permite, con aviso ("ya pagó, el pago queda registrado en su cuenta corriente"). Qué hacer con esa plata (devolverla o dejarla como saldo a favor) queda para la **etapa 5**.
+- El **tipo** de una actividad no se cambia después de creada (lo impide la base). El profesor no puede ser alumno de su propia clase.
+- Las clases no tienen equipos. Eliminar un equipo deja a sus jugadores anotados, sin equipo.
+- Funciones nuevas (`000007`): `guardar_equipo` (crea/renombra el equipo y deja exactamente esos jugadores, en una transacción) y `agregar_participantes` (alta masiva, ignora a los ya anotados).
+
+- **Ajustes pedidos al revisar la etapa 3** (migración `000008`):
+  - Botón "Editar" visible en cada equipo (antes estaba solo en el menú ⋮).
+  - **Partidos en prácticas**: pestaña "Partidos" con cruces equipo vs equipo, hora y cancha opcionales, y **resultado** (goles). Muestra G/E/P de cada equipo. Se reusa la tabla `partidos` (la categoría pasó a ser opcional: obligatoria en torneos, prohibida en prácticas; las clases no tienen partidos). Los partidos de práctica no entran en `posiciones`.
+  - ~~Color de camiseta por partido~~ → **cambió**: la camiseta es del equipo (ver abajo).
+  - **Precio especial por jugador** (`participaciones.precio`, null = el de la actividad), desde el menú del jugador. Ajusta su cobro impago; con 0 lo anula; no se puede cambiar si ya pagó. Al cambiar el precio de la actividad, los que tienen precio especial no cambian.
+  - Si hay anotados sin equipo, se muestra un aviso con "Armar equipo" (también en la tarjeta "Sin equipo"), y en el modal esos jugadores aparecen primero. Sin al menos 2 equipos no se pueden crear partidos.
+  - La tarjeta de los anotados sin equipo se llama "Anotados sin equipo" (no es un equipo): "Armar equipo con estos" abre el modal con esos jugadores precargados, y el tacho los quita a todos de la actividad.
+  - Eliminar equipo (tacho en cada equipo): "Solo el equipo" (los jugadores quedan sin equipo) o "Equipo y jugadores" (también los quita de la actividad; los impagos se anulan y los pagos quedan registrados). No se puede si el equipo tiene partidos con resultado.
+  - El precio de la actividad se muestra como **precio base**, con cuántos pagan otro precio. Al agregar jugadores (sueltos o "Agregar varios") se puede poner un precio para ellos.
+  - **Camiseta del equipo** (`equipos.color`, migración `000009`): se elige **solo al armar el equipo** (si el nombre es un color, se sincroniza); los equipos sin color que se llaman como uno lo toman de su nombre. El partido **no** elige camiseta: copia la de cada equipo en `partidos.color_a/color_b` y la tarjeta muestra la del equipo.
+  - Ventana de partido compacta: dos selects "Seleccionar equipo" (el elegido de un lado no aparece en el otro; los equipos que ya tienen otro partido no se ofrecen, salvo con "Mostrar también los que ya tienen partido" para revanchas/finales) con los goles al lado, y hora/cancha abajo.
+  - Equipos y partidos aplican a **todas las actividades salvo clases**: en la etapa 4 los torneos usan los mismos componentes.
+
+### Para la etapa 4 (Torneos)
+- `/actividades` no muestra torneos; el inicio y la ficha del jugador los muestran sin enlace (o enlazan a `/torneos`). Al hacer la etapa 4, decidir si aparecen en el listado/calendario de actividades.
+- Reutilizar `ModalEquipo`, `SelectorJugadores`, `ModalAgregarVarios` y `TabPartidos`/`SelectorCamiseta` (los partidos de torneo además llevan categoría, zona y fase) (`src/components/actividades/detalle/`), y `guardar_equipo`, que ya sirve para torneos.
+
+### Pedido para la etapa 6 (Exportaciones)
+- **Exportar los partidos de una práctica a PNG** (pedido al revisar la etapa 3): logo del club, fecha y hora de la actividad, y cada partido con sus dos equipos; de cada equipo: nombre, camiseta (color), hándicap total y jugadores (con su hándicap). Hacerlo con `next/og` como el resto de las imágenes; botón "Exportar imagen" en la pestaña Partidos. **Formato: horizontal** (p. ej. 1920×1080). Se tiene que poder exportar **todos los partidos** en una imagen **o un partido solo** (botón en cada tarjeta de partido). Si son muchos partidos, la imagen de "todos" tiene que acomodarlos (grilla o varias imágenes).
 
 ### Acordado para la etapa 5 (Cobros) — rediseño del cobro desde la ficha
 Botón **"Cobrar"** en la ficha (hoy deshabilitado en `tab-cuenta-corriente.tsx`) → modal:
@@ -91,7 +121,7 @@ Implica cambios de esquema: tabla **`pagos`** + monto aplicado/saldo por cobro (
 
 ---
 
-## 6. Próximo paso: etapa 3 — Actividades
+## 6. Etapa 3 — Actividades (hecha; referencia)
 Según la especificación (Módulo 2), excepto `equipo_jugadores` (eliminada). El esquema, triggers, `actividades_resumen` y `buscar_jugadores_lista` ya existen. Reutilizar:
 - `AltaRapidaJugador` (`src/components/jugadores/alta-rapida.tsx`) con la prop `onCreado`.
 - `InsigniaApto` para el aviso de apto vencido al anotar (aviso, no bloqueo).

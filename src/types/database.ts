@@ -342,6 +342,7 @@ export type Database = {
         Row: {
           actividad_id: string
           categoria_id: string | null
+          color: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -351,6 +352,7 @@ export type Database = {
         Insert: {
           actividad_id: string
           categoria_id?: string | null
+          color?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -360,6 +362,7 @@ export type Database = {
         Update: {
           actividad_id?: string
           categoria_id?: string | null
+          color?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -813,6 +816,7 @@ export type Database = {
           equipo_id: string | null
           id: string
           jugador_id: string
+          precio: number | null
         }
         Insert: {
           actividad_id: string
@@ -823,6 +827,7 @@ export type Database = {
           equipo_id?: string | null
           id?: string
           jugador_id: string
+          precio?: number | null
         }
         Update: {
           actividad_id?: string
@@ -833,6 +838,7 @@ export type Database = {
           equipo_id?: string | null
           id?: string
           jugador_id?: string
+          precio?: number | null
         }
         Relationships: [
           {
@@ -897,7 +903,9 @@ export type Database = {
         Row: {
           actividad_id: string
           cancha: string | null
-          categoria_id: string
+          categoria_id: string | null
+          color_a: string | null
+          color_b: string | null
           created_at: string
           equipo_a_id: string | null
           equipo_b_id: string | null
@@ -919,7 +927,9 @@ export type Database = {
         Insert: {
           actividad_id: string
           cancha?: string | null
-          categoria_id: string
+          categoria_id?: string | null
+          color_a?: string | null
+          color_b?: string | null
           created_at?: string
           equipo_a_id?: string | null
           equipo_b_id?: string | null
@@ -941,7 +951,9 @@ export type Database = {
         Update: {
           actividad_id?: string
           cancha?: string | null
-          categoria_id?: string
+          categoria_id?: string | null
+          color_a?: string | null
+          color_b?: string | null
           created_at?: string
           equipo_a_id?: string | null
           equipo_b_id?: string | null
@@ -1391,6 +1403,14 @@ export type Database = {
       }
     }
     Functions: {
+      agregar_participantes: {
+        Args: {
+          p_actividad_id: string
+          p_equipo_id?: string
+          p_jugadores: string[]
+        }
+        Returns: number
+      }
       buscar_jugadores: {
         Args: { p_limite?: number; p_solo_activos?: boolean; p_texto: string }
         Returns: {
@@ -1453,6 +1473,15 @@ export type Database = {
       generar_todos_contra_todos: {
         Args: { p_categoria_id: string; p_zona_id?: string }
         Returns: number
+      }
+      guardar_equipo: {
+        Args: {
+          p_actividad_id: string
+          p_equipo_id?: string
+          p_jugadores: string[]
+          p_nombre: string
+        }
+        Returns: string
       }
       hoy_ar: { Args: never; Returns: string }
       monto_cuota_social: { Args: { p_periodo: string }; Returns: number }
