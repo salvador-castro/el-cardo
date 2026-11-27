@@ -46,7 +46,7 @@ export default async function DetalleActividadPage({ params, searchParams }: Pag
     supabase.from("participaciones").select("id, jugador_id, equipo_id, asistencia, bonificado, precio").eq("actividad_id", id),
     supabase
       .from("cobros")
-      .select("id, participacion_id, monto, vencimiento, estado, medio_pago, pagado_at, nota, created_at, jugador:jugadores(id, nombre, apellido)")
+      .select("id, participacion_id, monto, monto_pagado, vencimiento, estado, medio_pago, pagado_at, nota, created_at, jugador:jugadores(id, nombre, apellido)")
       .eq("actividad_id", id)
       .order("created_at"),
     // Todos los jugadores (los inactivos se muestran si ya estaban anotados, pero no se pueden elegir).
@@ -107,7 +107,7 @@ export default async function DetalleActividadPage({ params, searchParams }: Pag
   const cobroPorParticipacion = new Map<string, NonNullable<ParticipanteDetalle["cobro"]>>()
   for (const c of filasCobros) {
     if (c.participacion_id && c.estado !== "anulado") {
-      cobroPorParticipacion.set(c.participacion_id, { estado: c.estado, monto: Number(c.monto) })
+      cobroPorParticipacion.set(c.participacion_id, { estado: c.estado, monto: Number(c.monto), monto_pagado: Number(c.monto_pagado) })
     }
   }
 
@@ -127,6 +127,7 @@ export default async function DetalleActividadPage({ params, searchParams }: Pag
     id: c.id,
     jugador: c.jugador,
     monto: Number(c.monto),
+    monto_pagado: Number(c.monto_pagado),
     vencimiento: c.vencimiento,
     estado: c.estado,
     medio_pago: c.medio_pago,
@@ -134,7 +135,9 @@ export default async function DetalleActividadPage({ params, searchParams }: Pag
     nota: c.nota,
   }))
   const esperado = cobros.filter((c) => ["pendiente", "vencido", "pagado"].includes(c.estado)).reduce((t, c) => t + c.monto, 0)
-  const cobrado = cobros.filter((c) => c.estado === "pagado").reduce((t, c) => t + c.monto, 0)
+  const cobrado = cobros
+    .filter((c) => ["pendiente", "vencido", "pagado"].includes(c.estado))
+    .reduce((t, c) => t + c.monto_pagado, 0)
   const impagos = cobros.filter((c) => c.estado === "pendiente" || c.estado === "vencido")
   const presentes = participantes.filter((p) => p.asistencia === "presente").length
   const sinMarcar = participantes.filter((p) => !p.asistencia).length

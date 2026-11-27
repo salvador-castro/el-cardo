@@ -53,6 +53,7 @@ declare
   v_zona_b uuid;
   v_eq uuid[];
   v_partido uuid;
+  v_pago uuid;
   r record;
   i integer;
   -- Prácticas pasadas: días hacia atrás
@@ -321,15 +322,22 @@ begin
     from public.actividades a
     where a.id = c.actividad_id and a.estado = 'finalizada';
 
-  update public.cobros c
-    set estado = 'pagado',
-        medio_pago = (array['efectivo', 'transferencia', 'mercadopago', 'transferencia'])[1 + abs(hashtext(c.id::text)) % 4]::public.medio_pago,
-        pagado_at = least(now(), (a.inicio + make_interval(days => abs(hashtext(c.id::text)) % 6, hours => 2))),
-        mp_payment_id = null
-    from public.actividades a
-    where a.id = c.actividad_id
+  -- Cada cobro pagado tiene su pago (modelo de pagos, migración 000011).
+  for r in
+    select c.id, c.jugador_id, c.monto,
+           (array['efectivo', 'transferencia', 'mercadopago', 'transferencia'])[1 + abs(hashtext(c.id::text)) % 4]::public.medio_pago as medio,
+           least(now(), (a.inicio + make_interval(days => abs(hashtext(c.id::text)) % 6, hours => 2))) as cuando
+    from public.cobros c
+    join public.actividades a on a.id = c.actividad_id
+    where c.estado in ('pendiente', 'vencido')
       and (a.estado = 'finalizada' or a.tipo = 'torneo')
-      and abs(hashtext(c.id::text || 'pago')) % 100 < case when a.tipo = 'torneo' then 50 else 65 end;
+      and abs(hashtext(c.id::text || 'pago')) % 100 < case when a.tipo = 'torneo' then 50 else 65 end
+  loop
+    insert into public.pagos (jugador_id, monto, medio, pagado_at, mp_payment_id)
+      values (r.jugador_id, r.monto, r.medio, r.cuando, case when r.medio = 'mercadopago' then 'SEED-' || r.id end)
+      returning id into v_pago;
+    insert into public.pago_aplicaciones (pago_id, cobro_id, monto) values (v_pago, r.id, r.monto);
+  end loop;
 
   -- Un alumno becado
   update public.participaciones set bonificado = true
@@ -342,21 +350,35 @@ begin
   perform public.generar_cuotas_sociales(to_char(hoy - interval '1 month', 'YYYY-MM'));
   perform public.generar_cuotas_sociales(to_char(hoy, 'YYYY-MM'));
 
-  update public.cobros c
-    set estado = 'pagado',
-        medio_pago = (array['transferencia', 'mercadopago', 'efectivo', 'transferencia'])[1 + abs(hashtext(c.id::text)) % 4]::public.medio_pago,
-        pagado_at = least(now(), (c.vencimiento - (abs(hashtext(c.id::text)) % 8))::timestamp at time zone tz + interval '11 hours')
+  for r in
+    select c.id, c.jugador_id, c.monto,
+           (array['transferencia', 'mercadopago', 'efectivo', 'transferencia'])[1 + abs(hashtext(c.id::text)) % 4]::public.medio_pago as medio,
+           least(now(), (c.vencimiento - (abs(hashtext(c.id::text)) % 8))::timestamp at time zone tz + interval '11 hours') as cuando
+    from public.cobros c
     where c.concepto = 'cuota_social'
       and abs(hashtext(c.id::text || 'cuota')) % 100 <
         case c.periodo
           when to_char(hoy - interval '2 months', 'YYYY-MM') then 85
           when to_char(hoy - interval '1 month', 'YYYY-MM') then 65
           else 40
-        end;
+        end
+  loop
+    insert into public.pagos (jugador_id, monto, medio, pagado_at, mp_payment_id)
+      values (r.jugador_id, r.monto, r.medio, r.cuando, case when r.medio = 'mercadopago' then 'SEED-' || r.id end)
+      returning id into v_pago;
+    insert into public.pago_aplicaciones (pago_id, cobro_id, monto) values (v_pago, r.id, r.monto);
+  end loop;
 
   -- Un cobro manual de ejemplo
   insert into public.cobros (jugador_id, concepto, descripcion, monto, vencimiento)
-  values ('00000000-0000-4000-a000-000000000016', 'otro', 'Pensión de caballo — 1 semana', 60000, hoy + 5);
+  values ('00000000-0000-4000-a000-000000000016', 'otro', 'Pensión de caballo — 1 semana', 60000, hoy + 5)
+  returning id into v_act;
+
+  -- Pago parcial de ejemplo: pagó $20.000 de la pensión en efectivo.
+  insert into public.pagos (jugador_id, monto, medio, nota)
+    values ('00000000-0000-4000-a000-000000000016', 20000, 'efectivo', 'Seña')
+    returning id into v_pago;
+  insert into public.pago_aplicaciones (pago_id, cobro_id, monto) values (v_pago, v_act, 20000);
 
   -- Pedro dejó el club: queda inactivo (con su historial).
   update public.jugadores set activo = false, notas = 'Se mudó al exterior.'

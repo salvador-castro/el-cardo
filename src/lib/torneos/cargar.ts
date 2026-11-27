@@ -40,7 +40,7 @@ export async function cargarTorneo(supabase: Cliente, id: string): Promise<Torne
     supabase.from("participaciones").select("id, jugador_id, equipo_id, asistencia, bonificado, precio").eq("actividad_id", id),
     supabase
       .from("cobros")
-      .select("id, participacion_id, monto, vencimiento, estado, medio_pago, pagado_at, nota, jugador:jugadores(id, nombre, apellido)")
+      .select("id, participacion_id, monto, monto_pagado, vencimiento, estado, medio_pago, pagado_at, nota, jugador:jugadores(id, nombre, apellido)")
       .eq("actividad_id", id)
       .order("created_at"),
     supabase.from("jugadores_resumen").select("id, nombre, apellido, handicap, tipo, club_origen, apto_estado, activo"),
@@ -95,7 +95,7 @@ export async function cargarTorneo(supabase: Cliente, id: string): Promise<Torne
   const cobroPorParticipacion = new Map<string, NonNullable<ParticipanteDetalle["cobro"]>>()
   for (const c of cobs.data ?? []) {
     if (c.participacion_id && c.estado !== "anulado") {
-      cobroPorParticipacion.set(c.participacion_id, { estado: c.estado, monto: Number(c.monto) })
+      cobroPorParticipacion.set(c.participacion_id, { estado: c.estado, monto: Number(c.monto), monto_pagado: Number(c.monto_pagado) })
     }
   }
 
@@ -160,6 +160,7 @@ export async function cargarTorneo(supabase: Cliente, id: string): Promise<Torne
       id: c.id,
       jugador: c.jugador,
       monto: Number(c.monto),
+      monto_pagado: Number(c.monto_pagado),
       vencimiento: c.vencimiento,
       estado: c.estado,
       medio_pago: c.medio_pago,

@@ -13,7 +13,7 @@ Leer junto con `docs/ESPECIFICACION.md` (la especificación original). **Lo que 
 | 2. Jugadores | ✅ Terminada y revisada (con ajustes pedidos por el cliente) |
 | 3. Actividades (prácticas y clases, equipos, partidos, asistencia) | ✅ Terminada, revisada y en producción (commit `6f02e41`, 27/11/2026) |
 | 4. Torneos (+ rotación a la americana en prácticas) | ✅ Terminada, revisada y en producción (28/11/2026) |
-| 5. Cobros + Mercado Pago + mails | ⏭️ **Próxima** (con cambios acordados, ver §4) |
+| 5. Cobros + Mercado Pago + mails | 🚧 **5A hecha en la rama `etapa-5a`** (sin unir a `main`; falta aplicar la migración `000011` y que el cliente la pruebe); después 5B (Mercado Pago y mails) |
 | 6. Exportaciones, resumen y crons | Pendiente |
 
 Modo de trabajo acordado: **una etapa por vez**. Antes de cerrar una etapa: `npm run typecheck`, `npm run lint`, `npm run build` y `npm run db:probar`. Después contar qué quedó, qué falta y cómo probarlo, y **frenar hasta que el cliente dé el OK**. El cliente prefiere ir "de a pasos": si una idea nueva corresponde a otra etapa, anotarla y seguir el orden.
@@ -22,11 +22,19 @@ UI y textos en español rioplatense; código, tablas y columnas en español sin 
 
 ---
 
+## ⚠️ Para retomar (28/11/2026)
+La etapa 5A está en la rama **`etapa-5a`**, no en `main`: si se publica sin la migración `000011` aplicada, producción se rompe.
+1. `git fetch && git checkout etapa-5a` y `npm install`.
+2. `npm run db:push` (aplica `000011`) y `npm run db:tipos`; después `npm run typecheck`, `npm run lint`, `npm run build`, `npm run db:probar`.
+3. `npm run dev` y probar la 5A (ver "Hecho en la etapa 5A").
+4. Con el OK del cliente: `git checkout main && git merge etapa-5a && git push` (publica en Vercel).
+5. Seguir con la **5B**: Mercado Pago (link/QR/WhatsApp desde "Cobrar"), `/pagar/[token]`, webhook `/api/webhooks/mercadopago` y mails con Resend (por ahora todos a la casilla del desarrollador).
+
 ## 2. Infraestructura
 
 - **Repo:** https://github.com/salvador-castro/el-cardo (rama `main`, **público**; se recomendó pasarlo a privado).
 - **Producción:** https://el-cardo-polo.vercel.app (proyecto Vercel `el-cardo`, scope `salvador-castros-projects`). Cada push a `main` despliega solo. `el-cardo.vercel.app` es de otra cuenta. A futuro, si el club aprueba: `gestion.elcardopoloclub.com`.
-- **Supabase:** proyecto `elcardopoloclub` (linkeado con la CLI). Migraciones aplicadas hasta `20261128000010_torneos.sql` (28/11/2026). Tipos regenerados con `npm run db:tipos`. Seed cargado. Tipos regenerados con `npm run db:tipos`.
+- **Supabase:** proyecto `elcardopoloclub` (linkeado con la CLI). Migraciones aplicadas hasta `20261128000010_torneos.sql` (28/11/2026). **Pendiente: `20261128000011_pagos.sql`** (`npm run db:push` + `npm run db:tipos`; mientras tanto los tipos nuevos están agregados a mano). Seed cargado. Tipos regenerados con `npm run db:tipos`.
 - **Usuario de demo:** `admin@elcardo.test` (la contraseña la tiene el cliente; no se guarda en el repo).
 - **Mercado Pago:** se prueba con credenciales de **producción** (los pagos son reales; no se puede pagar con la misma cuenta dueña de la app). Webhook configurado en MP → `https://el-cardo-polo.vercel.app/api/webhooks/mercadopago`, evento "Pagos (legacy)".
 
@@ -52,7 +60,7 @@ Completar a mano en `.env.local` las secretas (`SUPABASE_SECRET_KEY`, `MP_ACCESS
 - **shadcn/ui** estilo `radix-nova` (Tailwind 4). Formularios con `Field`/`FieldLabel`/`FieldError` + react-hook-form + zod v4.
 - **Supabase CLI 3.x**: apunta a la base local por defecto → **siempre `--remote`** (`npm run db:push`, `db:seed`, `db:tipos` ya lo incluyen). Sin Docker en la máquina.
 - **Permisos:** los proyectos nuevos de Supabase **no** dan GRANT automático sobre `public` a `authenticated`/`service_role`. La migración `..._000006_permisos_explicitos.sql` lo resuelve y deja default privileges. Si una tabla nueva da "permission denied", revisar eso primero.
-- **Pruebas del SQL sin Supabase:** `npm run db:probar` levanta Postgres 17 en memoria (PGlite) con stubs de auth/storage, aplica migraciones + seed y corre ~62 chequeos de reglas y RLS (`scripts/db/probar.mjs`). Agregar chequeos ahí cuando se cambie el SQL.
+- **Pruebas del SQL sin Supabase:** `npm run db:probar` levanta Postgres 17 en memoria (PGlite) con stubs de auth/storage, aplica migraciones + seed y corre ~77 chequeos de reglas y RLS (`scripts/db/probar.mjs`). Agregar chequeos ahí cuando se cambie el SQL.
 - **Tipos:** `npm run db:tipos` (desde Supabase). `db:tipos:local` genera desde las migraciones si no hay conexión.
 - **Lógica de negocio en la base** (triggers): historial de hándicap, auditoría, cobro automático al anotar jugador, anulación al quitar/cancelar, actualización al cambiar precio, invalidación de links al cambiar monto o estado, eventos de cobro. Funciones listas: `generar_cuotas_sociales`, `procesar_vencimientos`, `crear_link_pago`, `registrar_pago_mp`, `pago_publico`, `buscar_jugadores`, `buscar_jugadores_lista`, `generar_todos_contra_todos`. Vistas: `jugadores_resumen`, `actividades_resumen`, `equipos_resumen`, `posiciones`, `goleadores_torneo`.
 - **Storage:** buckets privados `fotos`, `documentos`, `comprobantes`. Se sube **desde el navegador** con la sesión del usuario (`src/lib/storage.ts`, evita el límite de 4,5 MB de las funciones) y se registra con una server action. Se muestran con URLs firmadas (`src/lib/supabase/urls-firmadas.ts`).
@@ -113,6 +121,19 @@ Completar a mano en `.env.local` las secretas (`SUPABASE_SECRET_KEY`, `MP_ACCESS
 ### Pedido para la etapa 6 (Exportaciones)
 - **Exportar la planilla de rotación** como imagen, igual al modelo del cliente: logo, "PRÁCTICA · N CHUKKERS", club, día y hora; por equipo, nombre, handicap total, jugadores con hándicap, ✓/BAJA por chukker y fila "HC EN CANCHA".
 - **Exportar los partidos de una práctica a PNG** (pedido al revisar la etapa 3): logo del club, fecha y hora de la actividad, y cada partido con sus dos equipos; de cada equipo: nombre, camiseta (color), hándicap total y jugadores (con su hándicap). Hacerlo con `next/og` como el resto de las imágenes; botón "Exportar imagen" en la pestaña Partidos. **Formato: horizontal** (p. ej. 1920×1080). Se tiene que poder exportar **todos los partidos** en una imagen **o un partido solo** (botón en cada tarjeta de partido). Si son muchos partidos, la imagen de "todos" tiene que acomodarlos (grilla o varias imágenes).
+
+### Decidido al arrancar la etapa 5 (28/11/2026)
+- Se entrega en dos partes, cada una con su revisión: **5A** (modelo de pagos con pago parcial, "Cobrar" con efectivo/transferencia, `/cobros`, cobro manual, generar cuotas, detalle del cobro, `/configuracion`) y **5B** (Mercado Pago: link/QR/WhatsApp, `/pagar/[token]`, webhook; mails con Resend).
+- **Plata de quien pagó y después lo quitaron** (o se canceló la actividad): el cobro se anula y lo pagado queda como **saldo a favor** del jugador, que se puede usar al cobrarle otra cosa. También se puede registrar una **devolución**.
+- **Mails**: hasta tener acceso al DNS de `elcardopoloclub.com`, todos los mails se mandan a la casilla del desarrollador (modo demo).
+
+### Hecho en la etapa 5A (migración `000011`)
+- **Modelo de pagos**: tablas `pagos` (medio, fecha, nota, comprobante; se anulan, no se borran), `pago_aplicaciones` (qué parte de cada pago cancela cada cobro) y `devoluciones`. `cobros.monto_pagado` y el estado (`pagado` cuando cubre el monto) los calcula `recalcular_cobro` por trigger; nadie marca "pagado" a mano (`app.recalculando`).
+- Funciones: `registrar_pago` (efectivo/transferencia, del cobro más viejo al más nuevo, admite parcial), `usar_saldo_a_favor`, `registrar_devolucion`, `saldo_a_favor`, `crear_link_pago(cobros, monto opcional)` (link por el saldo o parcial) y `registrar_pago_mp` (crea el pago y sus aplicaciones). Son `security definer` con chequeo de admin.
+- **Saldo a favor**: si se anula un cobro con pagos (jugador quitado, actividad cancelada o anulación manual), lo pagado queda a favor. Se usa desde "Cobrar" (medio "Saldo a favor") o se devuelve ("Registrar devolución").
+- Vistas: `jugadores_resumen.deuda` = suma de saldos, nueva columna `saldo_a_favor`; `actividades_resumen.monto_cobrado` = suma de lo pagado (incluye parciales). El inicio suma lo recaudado del mes desde `pagos`.
+- Los datos existentes se migraron: cada cobro pagado tiene su pago.
+- UI: "Cobrar" (`ModalCobrar`) en la ficha, el listado y el detalle; cuenta corriente con pagos (anular), saldo a favor y devoluciones; `/cobros` (filtros, Cobrar, WhatsApp, detalle), "Nuevo cobro" y "Generar cuotas"; `/cobros/[id]` (pagos aplicados, historial, editar monto, bonificar, anular); `/configuracion`.
 
 ### Acordado para la etapa 5 (Cobros) — rediseño del cobro desde la ficha
 Botón **"Cobrar"** en la ficha (hoy deshabilitado en `tab-cuenta-corriente.tsx`) → modal:

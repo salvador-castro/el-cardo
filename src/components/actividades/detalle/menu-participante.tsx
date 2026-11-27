@@ -174,11 +174,14 @@ export function MenuParticipante({
             <AlertDialogDescription>
               {pagado ? (
                 <>
-                  <b>{nombre} ya pagó esta actividad</b> ({formatearMonto(p.cobro!.monto)}). El pago queda registrado en su
-                  cuenta corriente.
+                  <b>{nombre} ya pagó esta actividad</b> ({formatearMonto(p.cobro!.monto)}). Lo pagado queda como saldo a favor
+                  en su cuenta corriente: se puede usar en otro cobro o devolver.
                 </>
               ) : impago ? (
-                <>Su cobro pendiente de {formatearMonto(p.cobro!.monto)} se anula.</>
+                <>
+                  Su cobro pendiente de {formatearMonto(p.cobro!.monto - p.cobro!.monto_pagado)} se anula.
+                  {p.cobro!.monto_pagado > 0 && ` Lo que ya pagó (${formatearMonto(p.cobro!.monto_pagado)}) queda como saldo a favor.`}
+                </>
               ) : (
                 <>Deja de figurar en la actividad.</>
               )}

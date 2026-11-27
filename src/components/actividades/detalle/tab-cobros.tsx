@@ -9,6 +9,7 @@ export type CobroActividad = {
   id: string
   jugador: { id: string; nombre: string; apellido: string }
   monto: number
+  monto_pagado: number
   vencimiento: string
   estado: EstadoCobro
   medio_pago: MedioPago | null
@@ -23,7 +24,9 @@ export function TabCobros({ cobros, precio }: { cobros: CobroActividad[]; precio
   const suma = (estados: EstadoCobro[]) =>
     cobros.filter((c) => estados.includes(c.estado)).reduce((t, c) => t + c.monto, 0)
   const esperado = suma(["pendiente", "vencido", "pagado"])
-  const cobrado = suma(["pagado"])
+  const cobrado = cobros
+    .filter((c) => ["pendiente", "vencido", "pagado"].includes(c.estado))
+    .reduce((t, c) => t + c.monto_pagado, 0)
   const vencido = suma(["vencido"])
 
   const lista = [...cobros].sort(
@@ -49,8 +52,7 @@ export function TabCobros({ cobros, precio }: { cobros: CobroActividad[]; precio
 
       <p className="flex items-start gap-2 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
         <InfoIcon className="mt-0.5 size-4 shrink-0" />
-        Cada jugador anotado genera su cobro. Para registrar pagos o mandar el link de Mercado Pago se va a usar el
-        módulo de Cobros (próxima etapa).
+        Cada jugador anotado genera su cobro. Para cobrar, tocá el nombre del jugador y usá «Cobrar» en su cuenta corriente.
       </p>
 
       {lista.length === 0 ? (
@@ -70,13 +72,13 @@ export function TabCobros({ cobros, precio }: { cobros: CobroActividad[]; precio
                     ? `Pagado ${formatearFecha(c.pagado_at)}${c.medio_pago ? ` · ${ETIQUETA_MEDIO_PAGO[c.medio_pago]}` : ""}`
                     : c.estado === "anulado"
                       ? (c.nota ?? "Anulado")
-                      : `Vence ${formatearFecha(c.vencimiento)}`}
+                      : `Vence ${formatearFecha(c.vencimiento)}${c.monto_pagado > 0 ? ` · pagó ${formatearMonto(c.monto_pagado)}` : ""}`}
                 </p>
               </div>
               <span className={cn("font-medium tabular-nums", c.estado === "anulado" && "line-through")}>
                 {formatearMonto(c.monto)}
               </span>
-              <InsigniaEstadoCobro estado={c.estado} />
+              <InsigniaEstadoCobro estado={c.estado} parcial={c.monto_pagado > 0} />
             </li>
           ))}
         </ul>

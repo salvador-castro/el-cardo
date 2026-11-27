@@ -35,6 +35,28 @@ const ESTILO_ESTADO: Record<EstadoCobro, string> = {
   bonificado: "bg-[#e8e1f0] text-[#5c3f73]",
 }
 
-export function InsigniaEstadoCobro({ estado }: { estado: EstadoCobro }) {
-  return <Badge className={ESTILO_ESTADO[estado]}>{ETIQUETA_ESTADO_COBRO[estado]}</Badge>
+// `parcial`: el cobro impago ya tiene parte paga.
+export function InsigniaEstadoCobro({ estado, parcial = false }: { estado: EstadoCobro; parcial?: boolean }) {
+  return (
+    <span className="inline-flex flex-wrap justify-end gap-1">
+      <Badge className={ESTILO_ESTADO[estado]}>{ETIQUETA_ESTADO_COBRO[estado]}</Badge>
+      {parcial && (estado === "pendiente" || estado === "vencido") && (
+        <Badge variant="outline" className="border-exito/50 text-exito">
+          Pago parcial
+        </Badge>
+      )}
+    </span>
+  )
 }
+
+// Cobro impago tal como se lo ofrece para cobrar.
+export type CobroImpago = {
+  id: string
+  descripcion: string
+  vencimiento: string
+  estado: EstadoCobro
+  monto: number
+  monto_pagado: number
+}
+
+export const saldoCobro = (c: { monto: number; monto_pagado: number }) => Math.max(0, c.monto - c.monto_pagado)

@@ -36,7 +36,7 @@ export default async function FichaJugadorPage({ params, searchParams }: PagePro
   if (!UUID.test(id)) notFound()
 
   const supabase = await createClient()
-  const [jugadorRes, historialRes, documentosRes, participacionesRes, clasesRes, cobrosRes] = await Promise.all([
+  const [jugadorRes, historialRes, documentosRes, participacionesRes, clasesRes, cobrosRes, pagosRes, devolucionesRes] = await Promise.all([
     supabase.from("jugadores_resumen").select("*").eq("id", id).maybeSingle(),
     supabase
       .from("handicap_historial")
@@ -60,29 +60,50 @@ export default async function FichaJugadorPage({ params, searchParams }: PagePro
       .order("inicio", { ascending: false }),
     supabase
       .from("cobros")
-      .select("id, concepto, descripcion, periodo, monto, vencimiento, estado, medio_pago, pagado_at, nota")
+      .select("id, concepto, descripcion, periodo, monto, monto_pagado, vencimiento, estado, medio_pago, pagado_at, nota")
       .eq("jugador_id", id)
       .order("vencimiento", { ascending: false }),
+    supabase
+      .from("pagos")
+      .select(
+        "id, monto, medio, pagado_at, nota, comprobante_path, anulado, anulado_motivo, mp_payment_id, aplicaciones:pago_aplicaciones(monto, cobro:cobros(id, descripcion, estado))",
+      )
+      .eq("jugador_id", id)
+      .order("pagado_at", { ascending: false }),
+    supabase.from("devoluciones").select("id, monto, medio, fecha, nota").eq("jugador_id", id).order("fecha", { ascending: false }),
   ])
 
   const error =
-    jugadorRes.error ?? historialRes.error ?? documentosRes.error ?? participacionesRes.error ?? clasesRes.error ?? cobrosRes.error
+    jugadorRes.error ??
+    historialRes.error ??
+    documentosRes.error ??
+    participacionesRes.error ??
+    clasesRes.error ??
+    cobrosRes.error ??
+    pagosRes.error ??
+    devolucionesRes.error
   if (error) throw new Error(error.message)
   const j = jugadorRes.data
   if (!j || !j.id) notFound()
   const historial = historialRes.data ?? []
   const documentos = documentosRes.data ?? []
   const clases = clasesRes.data ?? []
-  const cobros = cobrosRes.data ?? []
+  const cobros = (cobrosRes.data ?? []).map((c) => ({ ...c, monto: Number(c.monto), monto_pagado: Number(c.monto_pagado) }))
+  const pagos = pagosRes.data ?? []
   // Impagos, del más viejo al más nuevo (para recordatorios).
   const pendientes = cobros
     .filter((c) => c.estado === "pendiente" || c.estado === "vencido")
     .sort((a, b) => a.vencimiento.localeCompare(b.vencimiento))
-    .map((c) => ({ id: c.id, descripcion: c.descripcion, monto: Number(c.monto), vencimiento: c.vencimiento }))
+    .map((c) => ({ id: c.id, descripcion: c.descripcion, monto: c.monto - c.monto_pagado, vencimiento: c.vencimiento }))
   const contacto = { nombre: j.nombre ?? "", telefono: j.telefono, email: j.email, pendientes }
 
-  const [fotos, archivos] = await Promise.all([
+  const [fotos, comprobantes, archivos] = await Promise.all([
     urlsFirmadas(supabase, "fotos", [j.foto_path]),
+    urlsFirmadas(
+      supabase,
+      "comprobantes",
+      pagos.map((p) => p.comprobante_path),
+    ),
     urlsFirmadas(
       supabase,
       "documentos",
@@ -123,6 +144,9 @@ export default async function FichaJugadorPage({ params, searchParams }: PagePro
               Debe {formatearMonto(deuda)} ({j.cobros_adeudados} {j.cobros_adeudados === 1 ? "cobro" : "cobros"})
             </p>
           )}
+          {Number(j.saldo_a_favor ?? 0) > 0 && (
+            <p className="mt-1 text-sm font-medium text-exito">Tiene {formatearMonto(Number(j.saldo_a_favor))} a favor</p>
+          )}
         </div>
         <div className="flex w-full items-center gap-6 border-t pt-4 sm:w-auto sm:flex-col sm:items-end sm:gap-3 sm:border-0 sm:pt-0">
           <div className="text-center sm:text-right">
@@ -150,7 +174,21 @@ export default async function FichaJugadorPage({ params, searchParams }: PagePro
         }}
         datos={<TabDatos jugador={j} historial={historial} />}
         actividades={<TabActividades participaciones={participaciones} clases={clases} esProfesor={j.es_profesor ?? false} />}
-        cuenta={<TabCuentaCorriente cobros={cobros} contacto={contacto} />}
+        cuenta={
+          <TabCuentaCorriente
+            jugador={{ id: j.id, nombre: `${j.nombre} ${j.apellido}` }}
+            cobros={cobros}
+            pagos={pagos.map((p) => ({
+              ...p,
+              monto: Number(p.monto),
+              comprobante_url: p.comprobante_path ? (comprobantes[p.comprobante_path] ?? null) : null,
+              aplicaciones: p.aplicaciones.map((a) => ({ monto: Number(a.monto), cobro: a.cobro })),
+            }))}
+            devoluciones={(devolucionesRes.data ?? []).map((d) => ({ ...d, monto: Number(d.monto) }))}
+            saldoAFavor={Number(j.saldo_a_favor ?? 0)}
+            contacto={contacto}
+          />
+        }
         documentos={
           <TabDocumentos
             jugadorId={j.id}

@@ -41,7 +41,9 @@ export default async function DetalleTorneoPage({ params, searchParams }: PagePr
 
   const editable = torneo.estado !== "cancelada"
   const esperado = cobros.filter((c) => ["pendiente", "vencido", "pagado"].includes(c.estado)).reduce((t, c) => t + c.monto, 0)
-  const cobrado = cobros.filter((c) => c.estado === "pagado").reduce((t, c) => t + c.monto, 0)
+  const cobrado = cobros
+    .filter((c) => ["pendiente", "vencido", "pagado"].includes(c.estado))
+    .reduce((t, c) => t + c.monto_pagado, 0)
   const impagos = cobros.filter((c) => c.estado === "pendiente" || c.estado === "vencido")
   const especiales = participantes.filter((p) => p.precio !== null).length
 

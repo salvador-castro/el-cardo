@@ -156,6 +156,7 @@ export type Database = {
           jugador_id: string
           medio_pago: Database["public"]["Enums"]["medio_pago"] | null
           monto: number
+          monto_pagado: number
           mp_payment_id: string | null
           nota: string | null
           pagado_at: string | null
@@ -177,6 +178,7 @@ export type Database = {
           jugador_id: string
           medio_pago?: Database["public"]["Enums"]["medio_pago"] | null
           monto: number
+          monto_pagado?: number
           mp_payment_id?: string | null
           nota?: string | null
           pagado_at?: string | null
@@ -198,6 +200,7 @@ export type Database = {
           jugador_id?: string
           medio_pago?: Database["public"]["Enums"]["medio_pago"] | null
           monto?: number
+          monto_pagado?: number
           mp_payment_id?: string | null
           nota?: string | null
           pagado_at?: string | null
@@ -802,6 +805,134 @@ export type Database = {
             columns: ["link_id"]
             isOneToOne: false
             referencedRelation: "links_pago"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      devoluciones: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          fecha: string
+          id: string
+          jugador_id: string
+          medio: Database["public"]["Enums"]["medio_pago"]
+          monto: number
+          nota: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          fecha?: string
+          id?: string
+          jugador_id: string
+          medio: Database["public"]["Enums"]["medio_pago"]
+          monto: number
+          nota?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          fecha?: string
+          id?: string
+          jugador_id?: string
+          medio?: Database["public"]["Enums"]["medio_pago"]
+          monto?: number
+          nota?: string | null
+        }
+        Relationships: []
+      }
+      pago_aplicaciones: {
+        Row: {
+          cobro_id: string
+          created_at: string
+          monto: number
+          pago_id: string
+        }
+        Insert: {
+          cobro_id: string
+          created_at?: string
+          monto: number
+          pago_id: string
+        }
+        Update: {
+          cobro_id?: string
+          created_at?: string
+          monto?: number
+          pago_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pago_aplicaciones_cobro_id_fkey"
+            columns: ["cobro_id"]
+            isOneToOne: false
+            referencedRelation: "cobros"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pago_aplicaciones_pago_id_fkey"
+            columns: ["pago_id"]
+            isOneToOne: false
+            referencedRelation: "pagos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pagos: {
+        Row: {
+          anulado: boolean
+          anulado_at: string | null
+          anulado_motivo: string | null
+          comprobante_path: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          jugador_id: string
+          link_id: string | null
+          medio: Database["public"]["Enums"]["medio_pago"]
+          monto: number
+          mp_payment_id: string | null
+          nota: string | null
+          pagado_at: string
+        }
+        Insert: {
+          anulado?: boolean
+          anulado_at?: string | null
+          anulado_motivo?: string | null
+          comprobante_path?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          jugador_id: string
+          link_id?: string | null
+          medio: Database["public"]["Enums"]["medio_pago"]
+          monto: number
+          mp_payment_id?: string | null
+          nota?: string | null
+          pagado_at?: string
+        }
+        Update: {
+          anulado?: boolean
+          anulado_at?: string | null
+          anulado_motivo?: string | null
+          comprobante_path?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          jugador_id?: string
+          link_id?: string | null
+          medio?: Database["public"]["Enums"]["medio_pago"]
+          monto?: number
+          mp_payment_id?: string | null
+          nota?: string | null
+          pagado_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pagos_jugador_id_fkey"
+            columns: ["jugador_id"]
+            isOneToOne: false
+            referencedRelation: "jugadores"
             referencedColumns: ["id"]
           },
         ]
@@ -1440,6 +1571,7 @@ export type Database = {
           numero_afiliado: string | null
           obra_social: string | null
           telefono: string | null
+          saldo_a_favor: number | null
           tipo: Database["public"]["Enums"]["tipo_jugador"] | null
           updated_at: string | null
           updated_by: string | null
@@ -1553,7 +1685,7 @@ export type Database = {
         Returns: boolean
       }
       crear_link_pago: {
-        Args: { p_cobro_ids: string[] }
+        Args: { p_cobro_ids: string[]; p_monto?: number }
         Returns: {
           created_at: string
           created_by: string | null
@@ -1614,6 +1746,27 @@ export type Database = {
         }
         Returns: undefined
       }
+      registrar_devolucion: {
+        Args: { p_jugador_id: string; p_medio: Database["public"]["Enums"]["medio_pago"]; p_monto: number; p_nota?: string }
+        Returns: string
+      }
+      registrar_pago: {
+        Args: {
+          p_cobro_ids: string[]
+          p_comprobante_path?: string
+          p_fecha?: string
+          p_jugador_id: string
+          p_medio: Database["public"]["Enums"]["medio_pago"]
+          p_monto: number
+          p_nota?: string
+        }
+        Returns: string
+      }
+      saldo_a_favor: { Args: { p_jugador_id: string }; Returns: number }
+      usar_saldo_a_favor: {
+        Args: { p_cobro_ids: string[]; p_jugador_id: string; p_monto?: number }
+        Returns: number
+      }
       hoy_ar: { Args: never; Returns: string }
       monto_cuota_social: { Args: { p_periodo: string }; Returns: number }
       nombre_periodo: { Args: { p_periodo: string }; Returns: string }
@@ -1661,6 +1814,8 @@ export type Database = {
         | "monto_modificado"
         | "link_invalidado"
         | "pago_a_revisar"
+        | "pago_parcial"
+        | "pago_anulado"
       tipo_jugador: "socio" | "no_socio" | "alumno" | "externo"
     }
     CompositeTypes: {
@@ -1812,6 +1967,8 @@ export const Constants = {
         "monto_modificado",
         "link_invalidado",
         "pago_a_revisar",
+        "pago_parcial",
+        "pago_anulado",
       ],
       tipo_jugador: ["socio", "no_socio", "alumno", "externo"],
     },

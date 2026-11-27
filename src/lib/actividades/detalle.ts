@@ -46,7 +46,7 @@ export type ParticipanteDetalle = {
   // Precio especial del jugador (null = el de la actividad).
   precio: number | null
   // Cobro vigente (no anulado) de la participación.
-  cobro: { estado: EstadoCobro; monto: number } | null
+  cobro: { estado: EstadoCobro; monto: number; monto_pagado: number } | null
 }
 
 export type PartidoDetalle = {

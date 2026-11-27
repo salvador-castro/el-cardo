@@ -27,8 +27,9 @@ export default async function InicioPage() {
 
   const [jugadores, adeudados, pagadosMes, proximas, alertas] = await Promise.all([
     supabase.from("jugadores").select("id", { count: "exact", head: true }).eq("activo", true),
-    supabase.from("cobros").select("monto, estado").in("estado", ["pendiente", "vencido"]),
-    supabase.from("cobros").select("monto").eq("estado", "pagado").gte("pagado_at", inicioDeMesAR()),
+    supabase.from("cobros").select("monto, monto_pagado, estado").in("estado", ["pendiente", "vencido"]),
+    // Lo que entró en el mes: pagos (también parciales) menos los anulados.
+    supabase.from("pagos").select("monto").eq("anulado", false).gte("pagado_at", inicioDeMesAR()),
     supabase
       .from("actividades_resumen")
       .select("id, tipo, nombre, inicio, participantes")
@@ -46,7 +47,7 @@ export default async function InicioPage() {
   const error = jugadores.error ?? adeudados.error ?? pagadosMes.error ?? proximas.error ?? alertas.error
   if (error) throw new Error(error.message)
 
-  const pendiente = (adeudados.data ?? []).reduce((t, c) => t + Number(c.monto), 0)
+  const pendiente = (adeudados.data ?? []).reduce((t, c) => t + Number(c.monto) - Number(c.monto_pagado), 0)
   const vencidos = (adeudados.data ?? []).filter((c) => c.estado === "vencido")
   const recaudado = (pagadosMes.data ?? []).reduce((t, c) => t + Number(c.monto), 0)
 

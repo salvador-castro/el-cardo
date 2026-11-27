@@ -82,6 +82,8 @@ const cob = await q(`select estado, monto, vencimiento from cobros where activid
 check('Anotar jugador crea cobro pendiente', cob.length === 1 && cob[0].estado === 'pendiente')
 
 // Link de pago para 2 cobros del mismo jugador, reutilización y pago MP
+await db.exec(`insert into cobros (jugador_id, concepto, descripcion, monto, vencimiento)
+  values ('00000000-0000-4000-a000-000000000019', 'otro', 'Cobro de prueba', 15000, hoy_ar() + 10)`)
 const imp = await q(`select id from cobros where jugador_id='00000000-0000-4000-a000-000000000019' and estado in ('pendiente','vencido') order by created_at limit 2`)
 const ids = `array['${imp.map(r => r.id).join("','")}']::uuid[]`
 const link = (await q(`select (crear_link_pago(${ids})).*`))[0]
@@ -149,8 +151,9 @@ await db.exec(`update participaciones set precio = 0 where actividad_id='${act}'
 check('Precio especial 0 anula su cobro', (await cobroDe(11)).length === 0)
 await db.exec(`update participaciones set precio = null where actividad_id='${act}' and jugador_id='${J(11)}'`)
 check('Volver al precio de la actividad crea el cobro', Number((await cobroDe(11))[0]?.m) === 30000)
-await db.exec(`update cobros set estado='pagado', medio_pago='efectivo', pagado_at=now()
-  where participacion_id = (select id from participaciones where actividad_id='${act}' and jugador_id='${J(13)}')`)
+const cobro13 = (await q(`select c.id, c.monto from cobros c join participaciones p on p.id=c.participacion_id
+  where p.actividad_id='${act}' and p.jugador_id='${J(13)}' and c.estado <> 'anulado'`))[0]
+await q(`select registrar_pago('${J(13)}', ${cobro13.monto}, 'efectivo', array['${cobro13.id}']::uuid[])`)
 await expectError('No se cambia el precio de quien ya pagó',
   `update participaciones set precio = 1 where actividad_id='${act}' and jugador_id='${J(13)}'`, 'ya pagó')
 
@@ -171,7 +174,9 @@ await expectError('Borrar un equipo con partido jugado', `delete from equipos wh
 // Cancelar actividad anula pendientes
 await db.exec(`update actividades set estado='cancelada' where id='${act}'`)
 const canc = await q(`select estado, count(*) c from cobros where actividad_id='${act}' group by 1`)
-check(`Cancelar actividad anula pendientes y respeta pagados (${JSON.stringify(canc)})`, canc.every(c => c.estado === 'anulado' || c.estado === 'pagado'))
+check(`Cancelar actividad anula todos sus cobros (${JSON.stringify(canc)})`, canc.every(c => c.estado === 'anulado'))
+const saldo13 = Number((await q(`select saldo_a_favor('${J(13)}') s`))[0].s)
+check(`Lo pagado de una actividad cancelada queda a favor (${saldo13})`, saldo13 === Number(cobro13.monto))
 
 // Quitar jugador anula su cobro
 const pt = (await q(`select p.id, p.actividad_id from participaciones p join actividades a on a.id=p.actividad_id
@@ -219,6 +224,44 @@ check('Se guarda quién descansa en cada chukker', nDesc === 1)
 await expectError('Descanso de alguien que no juega el partido', `select guardar_descansos('${ptPractica}', '[{"jugador_id":"${J(20)}","chukker":1}]'::jsonb)`, 'no juega')
 await expectError('Descanso en un chukker que no existe', `select guardar_descansos('${ptPractica}', '[{"jugador_id":"${J(3)}","chukker":6}]'::jsonb)`, 'chukkers')
 
+// ---- Etapa 5A: pagos ----
+const jp = J(21)
+const nuevoCobro = async (monto, dias = 10) =>
+  (await q(`insert into cobros (jugador_id, concepto, descripcion, monto, vencimiento)
+    values ('${jp}', 'otro', 'Prueba', ${monto}, hoy_ar() + ${dias}) returning id`))[0].id
+const cA = await nuevoCobro(30000, 1)
+const cB = await nuevoCobro(20000, 5)
+const estadoDe = async (id) => (await q(`select estado, monto_pagado::numeric mp from cobros where id='${id}'`))[0]
+await expectError('No se marca pagado a mano', `update cobros set estado='pagado', medio_pago='efectivo', pagado_at=now() where id='${cA}'`, 'registrá el pago')
+const pago1 = (await q(`select registrar_pago('${jp}', 40000, 'efectivo', array['${cA}','${cB}']::uuid[]) id`))[0].id
+const [eA, eB] = [await estadoDe(cA), await estadoDe(cB)]
+check(`Pago parcial: se aplica del más viejo al más nuevo (${eA.estado} ${eA.mp} / ${eB.estado} ${eB.mp})`,
+  eA.estado === 'pagado' && Number(eB.mp) === 10000 && eB.estado === 'pendiente')
+check('La deuda del jugador usa el saldo de cada cobro',
+  Number((await q(`select deuda from jugadores_resumen where id='${jp}'`))[0].deuda) ===
+  Number((await q(`select coalesce(sum(monto - monto_pagado),0) s from cobros where jugador_id='${jp}' and estado in ('pendiente','vencido')`))[0].s))
+await expectError('No se paga más de lo adeudado', `select registrar_pago('${jp}', 999999, 'efectivo', array['${cB}']::uuid[])`, 'supera')
+await expectError('Mercado Pago no se registra a mano', `select registrar_pago('${jp}', 100, 'mercadopago', array['${cB}']::uuid[])`, 'Mercado Pago')
+await expectError('El monto no baja de lo pagado', `update cobros set monto = 5000 where id='${cB}'`, 'menor que lo ya pagado')
+await db.exec(`update pagos set anulado = true, anulado_motivo = 'Error de carga' where id='${pago1}'`)
+check('Anular el pago devuelve los cobros a impagos',
+  (await estadoDe(cA)).estado !== 'pagado' && Number((await estadoDe(cB)).mp) === 0)
+await q(`select registrar_pago('${jp}', 30000, 'transferencia', array['${cA}']::uuid[])`)
+await db.exec(`update cobros set estado='anulado', nota='Prueba' where id='${cA}'`)
+const saldoJp = Number((await q(`select saldo_a_favor('${jp}') s`))[0].s)
+check(`Anular un cobro pagado deja saldo a favor (${saldoJp})`, saldoJp === 30000)
+const usado = Number((await q(`select usar_saldo_a_favor('${jp}', array['${cB}']::uuid[]) n`))[0].n)
+check(`Usar saldo a favor paga otro cobro (${usado})`, usado === 20000 && (await estadoDe(cB)).estado === 'pagado')
+await expectError('Devolución mayor al saldo', `select registrar_devolucion('${jp}', 50000, 'efectivo')`, 'supera')
+await q(`select registrar_devolucion('${jp}', 10000, 'transferencia', 'Devuelto')`)
+check('La devolución descuenta el saldo a favor', Number((await q(`select saldo_a_favor('${jp}') s`))[0].s) === 0)
+const cC = await nuevoCobro(50000)
+const linkParcial = (await q(`select (crear_link_pago(array['${cC}']::uuid[], 20000)).*`))[0]
+check('Link de pago por un monto parcial', Number(linkParcial.monto_total) === 20000)
+const rmp = (await q(`select registrar_pago_mp('MP-P', '${linkParcial.id}', 'approved', 20000, '{}') r`))[0].r
+const eC = await estadoDe(cC)
+check(`Pago MP parcial deja el saldo pendiente (${rmp}, pagado ${eC.mp})`, rmp === 'aplicado' && Number(eC.mp) === 20000 && eC.estado !== 'pagado')
+
 // ---- RLS ----
 const admin = '00000000-0000-4000-a000-00000000a001'
 await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${admin}', false);`)
@@ -229,10 +272,12 @@ const agAdmin = (await q(`select agregar_participantes('${fin}', array['${J(5)}'
 check(`Admin anota jugadores con agregar_participantes (${agAdmin})`, agAdmin === 1)
 const del = await q(`with d as (delete from cobros returning 1) select count(*) c from d`).catch(() => [{ c: 0 }])
 check('Delete de cobros no borra nada', Number(del[0].c) === 0)
-await expectError('Admin no marca pagado por MP a mano', `update cobros set estado='pagado', medio_pago='mercadopago', pagado_at=now()
-  where id = (select id from cobros where estado='vencido' limit 1)`, 'Mercado Pago')
-await db.exec(`update cobros set estado='pagado', medio_pago='efectivo', pagado_at=now() where id = (select id from cobros where estado='vencido' limit 1)`)
-check('Admin marca pagado en efectivo; evento con usuario', Number((await q(`select count(*) c from cobro_eventos where usuario_id='${admin}' and tipo='pagado'`))[0].c) === 1)
+const venc = (await q(`select id, jugador_id, monto - monto_pagado s from cobros where estado='vencido' limit 1`))[0]
+await expectError('Admin no registra pagos de Mercado Pago a mano',
+  `select registrar_pago('${venc.jugador_id}', ${venc.s}, 'mercadopago', array['${venc.id}']::uuid[])`, 'Mercado Pago')
+await expectError('Admin no inserta pagos directo', `insert into pagos (jugador_id, monto, medio) values ('${venc.jugador_id}', 1, 'efectivo')`, 'row-level security')
+await q(`select registrar_pago('${venc.jugador_id}', ${venc.s}, 'efectivo', array['${venc.id}']::uuid[])`)
+check('Admin registra un pago en efectivo; evento con usuario', Number((await q(`select count(*) c from cobro_eventos where usuario_id='${admin}' and tipo='pagado'`))[0].c) === 1)
 await expectError('Admin no llama pago_publico', `select pago_publico('x')`, 'permission')
 await db.exec(`select set_config('request.jwt.claim.sub', '00000000-0000-4000-a000-0000000000ff', false);`)
 check('Usuario sin perfil no ve nada', Number((await q(`select count(*) c from jugadores`))[0].c) === 0)

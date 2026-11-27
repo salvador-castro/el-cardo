@@ -105,8 +105,8 @@ export function AccionesActividad({
               {impagos.cantidad > 0
                 ? `Se anulan ${impagos.cantidad} ${impagos.cantidad === 1 ? "cobro impago" : "cobros impagos"} (${formatearMonto(impagos.monto)}). `
                 : ""}
-              Los pagos ya registrados no se tocan. Los jugadores siguen figurando en la actividad y la podés reactivar
-              después: en ese caso se vuelven a generar los cobros.
+              Lo que ya se pagó queda como saldo a favor de cada jugador. Los jugadores siguen figurando en la actividad y la
+              podés reactivar después: en ese caso se vuelven a generar los cobros.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
