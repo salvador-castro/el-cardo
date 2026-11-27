@@ -1,0 +1,99 @@
+# Cómo seguir — estado al 27/11/2026
+
+Documento de traspaso para retomar el trabajo en otra sesión o computadora.
+Leer junto con `docs/ESPECIFICACION.md` (la especificación original). **Lo que dice este archivo tiene prioridad** sobre la especificación.
+
+---
+
+## 1. Estado
+
+| Etapa | Estado |
+|---|---|
+| 1. Setup, Supabase, auth, layout, migraciones, RLS, seed | ✅ Terminada y revisada |
+| 2. Jugadores | ✅ Terminada y revisada (con ajustes pedidos por el cliente) |
+| 3. Actividades (prácticas y clases, equipos, asistencia) | ⏭️ **Próxima** |
+| 4. Torneos | Pendiente |
+| 5. Cobros + Mercado Pago + mails | Pendiente (con cambios acordados, ver §4) |
+| 6. Exportaciones, resumen y crons | Pendiente |
+
+Modo de trabajo acordado: **una etapa por vez**. Antes de cerrar una etapa: `npm run typecheck`, `npm run lint`, `npm run build` y `npm run db:probar`. Después contar qué quedó, qué falta y cómo probarlo, y **frenar hasta que el cliente dé el OK**. El cliente prefiere ir "de a pasos": si una idea nueva corresponde a otra etapa, anotarla y seguir el orden.
+
+UI y textos en español rioplatense; código, tablas y columnas en español sin tildes; comentarios en inglés o español (hasta ahora, español).
+
+---
+
+## 2. Infraestructura
+
+- **Repo:** https://github.com/salvador-castro/el-cardo (rama `main`, **público**; se recomendó pasarlo a privado).
+- **Producción:** https://el-cardo-polo.vercel.app (proyecto Vercel `el-cardo`, scope `salvador-castros-projects`). Cada push a `main` despliega solo. `el-cardo.vercel.app` es de otra cuenta. A futuro, si el club aprueba: `gestion.elcardopoloclub.com`.
+- **Supabase:** proyecto `elcardopoloclub` (linkeado con la CLI). Migraciones aplicadas hasta `20261126000006_permisos_explicitos.sql`. Seed cargado.
+- **Usuario de demo:** `admin@elcardo.test` (la contraseña la tiene el cliente; no se guarda en el repo).
+- **Mercado Pago:** se prueba con credenciales de **producción** (los pagos son reales; no se puede pagar con la misma cuenta dueña de la app). Webhook configurado en MP → `https://el-cardo-polo.vercel.app/api/webhooks/mercadopago`, evento "Pagos (legacy)".
+
+### Variables de entorno
+Ver `.env.example`. En Vercel están cargadas las 10 para production y preview (las secretas como *sensitive*, que no se pueden volver a leer). `NEXT_PUBLIC_APP_URL=https://el-cardo-polo.vercel.app` en Vercel **y** en `.env.local`.
+
+En una computadora nueva:
+```bash
+npm install
+npx vercel link --yes --project el-cardo --scope salvador-castros-projects
+npx vercel env pull .env.local   # trae las no secretas; las sensitive vienen vacías
+```
+Completar a mano en `.env.local` las secretas (`SUPABASE_SECRET_KEY`, `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `CRON_SECRET`) copiándolas de la otra máquina o del gestor de contraseñas. **Nunca pegar secretos en el chat**: para subir variables a Vercel se usa un script que las pasa por stdin a `vercel env add` sin imprimirlas.
+
+---
+
+## 3. Decisiones técnicas (y trampas ya resueltas)
+
+- **Next.js 16.4**: el middleware se llama `src/proxy.ts`. Hay docs de la versión en `node_modules/next/dist/docs/` (leerlas antes de usar APIs nuevas). **Cache Components desactivado** (`cacheComponents: false`): todas las páginas dependen de la sesión. `error.tsx` recibe `{ error: unknown, retry }`.
+- **TanStack Table v9** (no v8): `useTable` + `tableFeatures({...})` con registro explícito de features (sorting, pagination). Ver `src/components/jugadores/listado-jugadores.tsx` como referencia. Docs en `node_modules/@tanstack/react-table/skills/`.
+- **shadcn/ui** estilo `radix-nova` (Tailwind 4). Formularios con `Field`/`FieldLabel`/`FieldError` + react-hook-form + zod v4.
+- **Supabase CLI 3.x**: apunta a la base local por defecto → **siempre `--remote`** (`npm run db:push`, `db:seed`, `db:tipos` ya lo incluyen). Sin Docker en la máquina.
+- **Permisos:** los proyectos nuevos de Supabase **no** dan GRANT automático sobre `public` a `authenticated`/`service_role`. La migración `..._000006_permisos_explicitos.sql` lo resuelve y deja default privileges. Si una tabla nueva da "permission denied", revisar eso primero.
+- **Pruebas del SQL sin Supabase:** `npm run db:probar` levanta Postgres 17 en memoria (PGlite) con stubs de auth/storage, aplica migraciones + seed y corre ~26 chequeos de reglas y RLS (`scripts/db/probar.mjs`). Agregar chequeos ahí cuando se cambie el SQL.
+- **Tipos:** `npm run db:tipos` (desde Supabase). `db:tipos:local` genera desde las migraciones si no hay conexión.
+- **Lógica de negocio en la base** (triggers): historial de hándicap, auditoría, cobro automático al anotar jugador, anulación al quitar/cancelar, actualización al cambiar precio, invalidación de links al cambiar monto o estado, eventos de cobro. Funciones listas: `generar_cuotas_sociales`, `procesar_vencimientos`, `crear_link_pago`, `registrar_pago_mp`, `pago_publico`, `buscar_jugadores`, `buscar_jugadores_lista`, `generar_todos_contra_todos`. Vistas: `jugadores_resumen`, `actividades_resumen`, `equipos_resumen`, `posiciones`, `goleadores_torneo`.
+- **Storage:** buckets privados `fotos`, `documentos`, `comprobantes`. Se sube **desde el navegador** con la sesión del usuario (`src/lib/storage.ts`, evita el límite de 4,5 MB de las funciones) y se registra con una server action. Se muestran con URLs firmadas (`src/lib/supabase/urls-firmadas.ts`).
+- **Marca:** paleta del sitio del club (marino `#14233F`, dorado `#C6A35A`, crema `#F2E7D6`), tipografías Cormorant Garamond (títulos), Cinzel (marca) y Work Sans (texto). Escudo en `public/marca/`. Tokens en `src/app/globals.css`.
+- **Layout:** contenido hasta 1600 px de ancho; sidebar en desktop, barra superior + barra inferior en el celular.
+
+---
+
+## 4. Cambios pedidos por el cliente (ya hechos o acordados)
+
+### Hechos (etapa 2)
+- Listado de jugadores **paginado de a 8**, **filtros colapsables**, columnas **Jugador, Tipo, Hándicap, Apto, Acciones** (ojo = ver ficha, lápiz = editar).
+- Ficha: sin barra de scroll visible en las pestañas; **solo el menú "Enviar"** (se sacó el botón de WhatsApp suelto).
+- Menú **Enviar**: recordatorio de pago por WhatsApp (wa.me) o mail (mailto), mensaje libre por WhatsApp; cada envío se registra como evento `enviado` en los cobros. "Link de pago" figura deshabilitado ("etapa 5").
+- Login con botón para **mostrar/ocultar contraseña**.
+- Textos de mensajes en `src/lib/mensajes.ts`: el medio principal es **Mercado Pago**; `mensajeRecordatorio(nombre, cobros, linkPago?)` y `mensajeLinkPago(...)` ya aceptan el link.
+
+### Acordado para la etapa 5 (Cobros) — rediseño del cobro desde la ficha
+Botón **"Cobrar"** en la ficha (hoy deshabilitado en `tab-cuenta-corriente.tsx`) → modal:
+1. **Qué cobra:** lista de cobros pendientes/vencidos con checkboxes (todos marcados = "cancelar todo lo adeudado"). El admin puede elegir cuáles (ej. solo "Torneo $50.000"). **Monto editable** para **pago parcial** (ej. debe $200.000 y paga $125.000): se aplica a los cobros elegidos, **del más viejo al más nuevo**; el que queda a medias conserva su saldo y sigue pendiente/vencido.
+2. **Cómo paga:**
+   - **Mercado Pago:** se genera el link y **se envía automáticamente por mail** con un texto personalizado (ej. "Hola Juan, te enviamos el link para pagar Copa Apertura por $50.000") + opción de WhatsApp / copiar link. Pasa a pagado solo por webhook.
+   - **Efectivo / Transferencia:** se registra pagado en el momento (fecha, nota, comprobante opcional); opcional mail de recibo.
+3. Todo queda en el historial del cobro y en la cuenta corriente.
+
+Implica cambios de esquema: tabla **`pagos`** + monto aplicado/saldo por cobro (hoy un cobro está pagado entero o no; `links_pago` tiene monto fijo = suma de cobros). Revisar `crear_link_pago`, `registrar_pago_mp`, `jugadores_resumen.deuda` y `actividades_resumen` para que usen saldos.
+
+### Mails automáticos
+- Proveedor elegido: **Resend** (está en el Marketplace de Vercel; se puede provisionar desde ahí).
+- **Pendiente de definir:** el dominio de envío. Para mandar a cualquier destinatario hay que verificar un dominio (DNS). Opciones: `elcardopoloclub.com` (ideal, requiere acceso al DNS del club), un dominio del desarrollador para la demo, o enviar todo a la casilla propia durante la demo.
+
+---
+
+## 5. Pendientes de infraestructura
+- Pasar el repo de GitHub a **privado** o cambiar la contraseña del usuario de demo antes de mostrarlo.
+- Desactivar "Allow new users to sign up" en Supabase (Authentication) si no se hizo.
+- Los documentos del seed no tienen archivo adjunto (aparecen "Sin archivo adjunto").
+
+---
+
+## 6. Próximo paso: etapa 3 — Actividades
+Según la especificación (Módulo 2), excepto `equipo_jugadores` (eliminada). El esquema, triggers, `actividades_resumen` y `buscar_jugadores_lista` ya existen. Reutilizar:
+- `AltaRapidaJugador` (`src/components/jugadores/alta-rapida.tsx`) con la prop `onCreado`.
+- `InsigniaApto` para el aviso de apto vencido al anotar (aviso, no bloqueo).
+- El patrón de listado paginado de jugadores para el listado de actividades.
+La ruta `/actividades` hoy es un placeholder (`src/components/app/proximamente.tsx`).
